@@ -2780,6 +2780,62 @@ function awNotify(html, kind){
 
 /*═══════════ TRANSLATE PRACTICE ═══════════*/
 /* ── Translate assignment list in Assignments tab ── */
+/* ── Edit modal: title, session start, deadline, pass score ── */
+function openTrEditModal(s){
+  // Populate fields
+  document.getElementById('tre-title').value = s.title || '';
+  document.getElementById('tre-pass').value  = s.passScore || 85;
+
+  // Convert ISO/date string → datetime-local value (YYYY-MM-DDTHH:MM)
+  function toLocal(str){
+    if(!str) return '';
+    var d = new Date(str);
+    if(isNaN(d)) return '';
+    var off = d.getTimezoneOffset()*60000;
+    return new Date(d.getTime()-off).toISOString().slice(0,16);
+  }
+  document.getElementById('tre-start').value    = toLocal(s.sessionStart);
+  document.getElementById('tre-deadline').value = toLocal(s.deadline || s.sessionEnd || '');
+  document.getElementById('tre-setid').value    = s.setId;
+  document.getElementById('trEditModal').classList.add('show');
+}
+
+function closeTrEditModal(){ document.getElementById('trEditModal').classList.remove('show'); }
+
+function saveTrEdit(){
+  var setId    = document.getElementById('tre-setid').value;
+  var title    = (document.getElementById('tre-title').value||'').trim();
+  var pass     = parseInt(document.getElementById('tre-pass').value,10)||85;
+  var start    = document.getElementById('tre-start').value;
+  var deadline = document.getElementById('tre-deadline').value;
+
+  if(!title){ AW.toast('Title is required.','warn'); return; }
+  if(!start){ AW.toast('Session Start is required.','warn'); return; }
+
+  // Recompute sessionEnd = deadline (simpler: just keep them in sync)
+  var saveBtn = document.getElementById('trEditSaveBtn');
+  saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+  AW.api('translate.update',{
+    setId:       setId,
+    title:       title,
+    passScore:   pass,
+    sessionStart:start,
+    sessionEnd:  deadline || start,
+    deadline:    deadline || '',
+  }).then(function(r){
+    saveBtn.disabled = false; saveBtn.textContent = '💾 Save changes';
+    if(r&&r.success){
+      AW.toast('Updated successfully.','ok');
+      closeTrEditModal();
+      loadTranslateList();
+    } else AW.toast('Error: '+(r&&r.error||'Unknown'),'err',4000);
+  }).catch(function(e){
+    saveBtn.disabled = false; saveBtn.textContent = '💾 Save changes';
+    AW.toast('Connection error.','err');
+  });
+}
+
 function loadTranslateList(){
   AW.api('translate.list', { classId: curClass() }).then(function(res){
     var sets = (res&&res.data)||[];
@@ -2804,7 +2860,7 @@ function loadTranslateList(){
     }
     // ── Assignment list table ─────────────────────────────────────
     html += '<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
-      '<th>Title</th><th>Items</th><th>Pass</th><th>Order</th><th>Session Start</th><th>Deadline</th><th>Status</th><th></th>'+
+      '<th>Title</th><th>Items</th><th>Pass</th><th>Order</th><th>Session Start</th><th>Deadline</th><th>Status</th><th style="min-width:160px"></th>'+
       '</tr></thead><tbody>'+
       sets.map(function(s){
         var active = s.active;
@@ -2814,6 +2870,7 @@ function loadTranslateList(){
             ? '<span style="color:#A66B00;font-size:.75rem;font-weight:700">⏳ Upcoming</span>'
             : '<span style="color:var(--aw-ink-3);font-size:.75rem">✓ Closed</span>';
         var orderLabel = s.shuffle !== false ? '🔀 Random' : '📋 Ordered';
+        var sd = JSON.stringify(s).replace(/"/g,'&quot;');
         return '<tr>'+
           '<td><b>'+AW.esc(s.title)+'</b></td>'+
           '<td style="text-align:center">'+s.itemCount+'</td>'+
@@ -2822,14 +2879,20 @@ function loadTranslateList(){
           '<td style="font-size:.82rem">'+AW.fmtDate(s.sessionStart)+'</td>'+
           '<td style="font-size:.82rem">'+(s.deadline?AW.fmtDate(s.deadline):'—')+'</td>'+
           '<td>'+badge+'</td>'+
-          '<td><button class="aw-btn aw-btn-ghost" style="padding:3px 10px;font-size:.75rem;color:'+(active?'var(--aw-danger)':'var(--aw-writing)')+'"'+
-            ' data-tr-toggle="'+AW.esc(s.setId)+'" data-tr-cur="'+(active?'1':'0')+'">'+
-            (active?'Close':'Reopen')+'</button></td>'+
+          '<td style="white-space:nowrap;display:flex;gap:4px;padding:6px 8px">'+
+            '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.75rem"'+
+              ' data-tr-toggle="'+AW.esc(s.setId)+'" data-tr-cur="'+(active?'1':'0')+'">'+
+              (active?'Close':'Reopen')+'</button>'+
+            '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.75rem;color:var(--aw-primary)"'+
+              ' data-tr-edit="'+AW.esc(s.setId)+'" data-tr-set="'+sd+'">✏️ Edit</button>'+
+            '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.75rem;color:var(--aw-danger)"'+
+              ' data-tr-del="'+AW.esc(s.setId)+'" data-tr-title="'+AW.esc(s.title)+'">🗑</button>'+
+          '</td>'+
         '</tr>';
       }).join('')+'</tbody></table></div>';
     box.innerHTML = html;
 
-    // Wire toggle buttons
+    // Wire toggle (Close/Reopen)
     AW.els('[data-tr-toggle]').forEach(function(btn){
       btn.onclick=function(){
         var sid=btn.getAttribute('data-tr-toggle');
@@ -2838,6 +2901,29 @@ function loadTranslateList(){
           if(r&&r.success){AW.toast('Updated.','ok');loadTranslateList();}
           else AW.toast('Error.','err');
         });
+      };
+    });
+
+    // Wire Edit buttons
+    AW.els('[data-tr-edit]').forEach(function(btn){
+      btn.onclick=function(){
+        var sid=btn.getAttribute('data-tr-edit');
+        var s=JSON.parse(btn.getAttribute('data-tr-set').replace(/&quot;/g,'"'));
+        openTrEditModal(s);
+      };
+    });
+
+    // Wire Delete buttons
+    AW.els('[data-tr-del]').forEach(function(btn){
+      btn.onclick=function(){
+        var sid=btn.getAttribute('data-tr-del');
+        var ttl=btn.getAttribute('data-tr-title');
+        if(!confirm('Delete "'+ttl+'"?\n\nThis removes the set and all its sentences. Student results in TranslateResults are kept.\n\nThis action cannot be undone.')) return;
+        btn.disabled=true;
+        AW.api('translate.delete',{setId:sid}).then(function(r){
+          if(r&&r.success){AW.toast('Deleted.','ok');loadTranslateList();}
+          else{AW.toast('Error: '+(r&&r.error||'Unknown'),'err');btn.disabled=false;}
+        }).catch(function(){btn.disabled=false;AW.toast('Connection error.','err');});
       };
     });
 
@@ -3146,6 +3232,44 @@ startAlerts();
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--aw-border-2)">
       <button class="aw-btn aw-btn-ghost" onclick="closeTrModal()">Huỷ</button>
       <button class="aw-btn aw-btn-primary" id="trSaveBtn" disabled onclick="saveTrSet()" style="padding:10px 22px">💾 Save &amp; Launch</button>
+    </div>
+  </div>
+</div>
+<!-- Translate Edit modal -->
+<div class="aw-modal-bg" id="trEditModal">
+  <div class="aw-modal-card" style="max-width:500px;width:100%">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <h2 style="font-family:var(--aw-font-display);font-size:1.1rem;margin:0">✏️ Edit Translation Set</h2>
+      <button onclick="closeTrEditModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--aw-ink-3)">✕</button>
+    </div>
+    <input type="hidden" id="tre-setid">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="aw-field">
+        <label class="aw-label">Title *</label>
+        <input class="aw-input" id="tre-title" placeholder="Translation set title">
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div class="aw-field" style="flex:0 0 110px">
+          <label class="aw-label">Pass Score (%)</label>
+          <input class="aw-input" id="tre-pass" type="number" min="50" max="100" value="85">
+        </div>
+        <div class="aw-field" style="flex:1;min-width:190px">
+          <label class="aw-label">Session Start *</label>
+          <input class="aw-input" id="tre-start" type="datetime-local" step="60">
+        </div>
+        <div class="aw-field" style="flex:1;min-width:190px">
+          <label class="aw-label">Deadline</label>
+          <input class="aw-input" id="tre-deadline" type="datetime-local" step="60">
+          <p style="font-size:.72rem;color:var(--aw-ink-3);margin:4px 0 0">Leave blank for no deadline.</p>
+        </div>
+      </div>
+      <div style="background:#FFF8EC;border:1px solid #F0D9A0;border-radius:8px;padding:9px 12px;font-size:.8rem;color:#7A5000">
+        ⚠️ Changing the deadline affects whether students can currently submit. Sentences (Items JSON) cannot be edited here — delete and recreate if needed.
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--aw-border-2)">
+      <button class="aw-btn aw-btn-ghost" onclick="closeTrEditModal()">Cancel</button>
+      <button class="aw-btn aw-btn-primary" id="trEditSaveBtn" onclick="saveTrEdit()" style="padding:10px 22px">💾 Save changes</button>
     </div>
   </div>
 </div>
