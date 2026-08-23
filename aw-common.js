@@ -30,37 +30,32 @@
     });
   };
 
-  /*── AW.apiLarge — for payloads too big for JSONP (Items JSON, vocab…)
-      Fire-and-confirm pattern: POST the full payload (no CORS read needed),
-      then JSONP a slim confirm after 1.5s. Pre-generate setId client-side
-      so both paths agree on identity.                                      */
-  AW.apiLarge = function(action, payload) {
-    var isEdit = !!(payload.setId && payload.setId.indexOf('tr_') >= 0);
+  /*── AW.apiLarge ──────────────────────────────────────────────────
+    For payloads too big for JSONP (e.g. Items JSON with 30 sentences).
+    Fire-and-confirm pattern:
+      1. POST the full payload immediately (GAS stores it; browser can't
+         read CORS response body from GAS, so we don't try).
+      2. After 1.5 s, JSONP a slim payload (items: []) to confirm creation.
+    Generate setId client-side so both steps share the same identity.   */
+  AW.apiLarge = function (action, payload) {
     var sid = payload.setId || ('tr_' + Date.now().toString(36).toUpperCase());
+    var full = {}; for (var k in payload) full[k] = payload[k]; full.setId = sid;
+    var slim = {}; for (var k2 in payload) slim[k2] = payload[k2];
+    slim.setId = sid; slim.items = []; // strip items so JSONP URL stays short
 
-    var full = {};
-    for (var k in payload) full[k] = payload[k];
-    full.setId = sid;
+    // Step 1: fire POST (best-effort; can't read response due to CORS)
+    postJSON(action, full).catch(function () {});
 
-    // Slim payload: strip items array (just IDs + meta)
-    var slim = {};
-    for (var k2 in payload) { if (k2 !== 'items') slim[k2] = payload[k2]; }
-    slim.setId = sid;
-    slim.items = [];
-
-    // Step 1: fire POST immediately (GAS stores everything; browser can't read CORS response)
-    postJSON(action, full).catch(function(){});
-
-    // Step 2: after 1.5s, JSONP slim payload to confirm creation
-    return new Promise(function(resolve) {
+    // Step 2: after 1.5 s confirm via JSONP slim payload
+    return new Promise(function (resolve) {
       var done = false;
-      var ok = function(v){ if(!done){ done=true; resolve(v); } };
-      // Safety timeout: always resolve after 10s
-      setTimeout(function(){ ok({ success:true, data:{ setId:sid } }); }, 10000);
-      setTimeout(function(){
+      var ok = function (v) { if (!done) { done = true; resolve(v); } };
+      // Safety net — always resolve after 10 s
+      setTimeout(function () { ok({ success: true, data: { setId: sid } }); }, 10000);
+      setTimeout(function () {
         jsonp(action, slim)
-          .then(function(res){ ok(res && res.success ? res : { success:true, data:{ setId:sid } }); })
-          .catch(function(){ ok({ success:true, data:{ setId:sid } }); });
+          .then(function (res) { ok(res && res.success ? res : { success: true, data: { setId: sid } }); })
+          .catch(function () { ok({ success: true, data: { setId: sid } }); });
       }, 1500);
     });
   };
@@ -391,10 +386,11 @@
   AW.renderTodaysWord = function (mountId) {
     var mount = document.getElementById(mountId || 'todaysWord');
     if (!mount) return;
-    var LK = 'aw_login_count';
-    var logins = parseInt(localStorage.getItem(LK) || '0', 10);
-    var forceIdx = Math.floor(logins / 5);
-    AW.api('vocab.today', { index: forceIdx }).then(function (res) {
+    // Don't force an index — let the server pick by epochDay (UTC+7 after 3am)
+    // so every student sees the same word each calendar day.
+    // Only pass index when the teacher/student explicitly requests a different word
+    // (e.g. a "Next word" button passes { force: true, index: N }).
+    AW.api('vocab.today', {}).then(function (res) {
       if (!res || !res.success || !res.data) { mount.innerHTML = ''; return; }
       var d = res.data, c = d.current, prev = d.previous;
       mount.innerHTML =
