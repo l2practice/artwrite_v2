@@ -2878,14 +2878,15 @@ function trGenItems(){
   var prompt=[
     'You are an EFL teacher creating translation exercises for Vietnamese university students.',
     'Generate EXACTLY 20 translation exercise items.',
-    'RULES:',
+    'STRICT RULES:',
     '- Return ONLY a JSON array, no markdown, no explanation.',
     '- Items 0,2,4,6… → direction "en2vi"; items 1,3,5,7… → direction "vi2en".',
     '- Each item: {id:"t01"–"t20", direction, source, modelAnswer, targetWords:[], isTreasure:bool, pattern:null|string}',
     '- source: sentence to translate (≤25 words, 1 idea). modelAnswer: accurate natural translation.',
-    '- Each item must use ≥1 word from the vocabulary list.',
+    '- CRITICAL: Each item MUST use AT LEAST 2 words from the vocabulary list (3 preferred). Use the words naturally in context.',
+    '- targetWords: list the vocabulary words from the list that appear in the sentence.',
     '- isTreasure:true for ~3–4 items with a notable grammar/collocation pattern; pattern names the pattern.',
-    '- Level: B1–B2 CEFR.',
+    '- Level: B1–B2 CEFR. Sentences should be natural, not forced.',
     'TARGET VOCABULARY: '+wordList,
     (title?'THEME: '+title:''),
     'Return ONLY the JSON array of 20 objects.'
@@ -2961,25 +2962,37 @@ function saveTrSet(){
     }
   } else if(dl){ sessionEnd=dl; }
   var setId='tr_'+Date.now().toString(36).toUpperCase();
-  document.getElementById('trSaveBtn').disabled=true;
-  AW.apiLarge('translate.create',{
+  var saveBtn=document.getElementById('trSaveBtn');
+  saveBtn.disabled=true;
+  saveBtn.innerHTML='<span class="aw-spin"></span> Saving…';
+
+  AW.api('translate.create',{
     setId:setId, classId:classId, title:title, targetWords:words,
     passScore:pass, sessionStart:start, sessionEnd:sessionEnd,
     deadline:dl||sessionEnd, durationMin:dur||'',
     items:_trItems, teacherEmail:sess.email||''
   }).then(function(res){
-    document.getElementById('trSaveBtn').disabled=false;
+    saveBtn.disabled=false; saveBtn.textContent='💾 Save & Launch';
     if(res&&res.success){
       AW.toast('Translation set created!','ok');
       closeTrModal();
-      // If currently on Assignments Translate tab, refresh
       var activeTab=document.querySelector('[data-amode].active');
       if(activeTab&&activeTab.dataset.amode==='translate') loadTranslateList();
-    } else AW.toast('Lỗi: '+(res&&res.error||'Unknown'),'err',5000);
+    } else AW.toast('Error: '+(res&&res.error||'Unknown'),'err',5000);
   }).catch(function(e){
-    document.getElementById('trSaveBtn').disabled=false;
-    AW.toast('Lỗi kết nối: '+(e&&e.message||e),'err',5000);
+    saveBtn.disabled=false; saveBtn.textContent='💾 Save & Launch';
+    AW.toast('Connection error: '+(e&&e.message||e),'err',5000);
   });
+}
+
+/*═══════════ init ═══════════*/
+function routeInitial(){
+  var hash=(location.hash||'').replace('#','');
+  if(hash==='live'){showLive();AW.setActiveNav('live');}
+  else if(hash==='results'){showResults();AW.setActiveNav('results');}
+  else if(hash==='queries'){showQueries();AW.setActiveNav('queries');}
+  else if(hash==='assignments'){showAssignments();AW.setActiveNav('assignments');}
+  else showOverview();
 }
 
 bootClasses();
@@ -3051,7 +3064,7 @@ startAlerts();
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--aw-border-2)">
       <button class="aw-btn aw-btn-ghost" onclick="closeTrModal()">Huỷ</button>
-      <button class="aw-btn aw-btn-primary" id="trSaveBtn" disabled onclick="saveTrSet()" style="padding:10px 22px">💾 Lưu &amp; Launch</button>
+      <button class="aw-btn aw-btn-primary" id="trSaveBtn" disabled onclick="saveTrSet()" style="padding:10px 22px">💾 Save &amp; Launch</button>
     </div>
   </div>
 </div>
