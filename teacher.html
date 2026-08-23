@@ -1421,7 +1421,7 @@ function showResults(){
       '<button class="aw-tab" data-mode="inclass">In-Class Practice</button>'+
       '<button class="aw-tab" data-mode="homework">Homework</button>'+
       '<button class="aw-tab" data-mode="free">Free Writing</button>'+
-      '<button class="aw-tab" data-mode="translate">🔄 Luyện Dịch</button>'+
+      '<button class="aw-tab" data-mode="translate">🔄 Translation Practice</button>'+
     '</div>'+
     '<div id="resFilterBar" style="display:none"></div>'+
     '<div id="resultsBox">'+
@@ -1489,13 +1489,13 @@ function showResults(){
           '<div><div style="font-size:1.4rem;font-weight:700">'+d.studentCount+'</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">SV đã làm</div></div>'+
           '<div><div style="font-size:1.4rem;font-weight:700">'+d.runsCount+'</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Lượt làm</div></div>'+
           '<div><div style="font-size:1.4rem;font-weight:700;color:var(--aw-writing)">'+d.avgScore+'%</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Avg score</div></div>'+
-          '<div><div style="font-size:1.4rem;font-weight:700">'+d.avgCleared+'/30</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Avg cleared</div></div>'+
+          '<div><div style="font-size:1.4rem;font-weight:700">'+d.avgCleared+'/20</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Avg cleared</div></div>'+
         '</div>'+
         '<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
           '<th>Student ID</th><th>Tên</th><th>Runs</th><th>Best %</th><th>Last %</th><th>Cleared</th><th>Last active</th>'+
         '</tr></thead><tbody>'+
         (stArr.length ? stArr.map(function(s){
-          var cc=s.clearedCount, ttl=30, pct=Math.round(cc/ttl*100);
+          var cc=s.clearedCount, ttl=20, pct=Math.round(cc/ttl*100);
           var col=cc>=ttl?'var(--aw-writing)':(cc>=20?'#A66B00':'var(--aw-ink)');
           var sc=s.bestScore>=85?'var(--aw-writing)':(s.bestScore>=60?'#A66B00':'var(--aw-danger)');
           return '<tr>'+
@@ -1995,7 +1995,7 @@ function showAssignments(){
     '<div class="aw-tabs" id="assignTabs">'+
       '<button class="aw-tab active" data-amode="inclass">In-class Practice</button>'+
       '<button class="aw-tab" data-amode="homework">Homework</button>'+
-      '<button class="aw-tab" data-amode="translate">🔄 Luyện Dịch</button>'+
+      '<button class="aw-tab" data-amode="translate">🔄 Translation Practice</button>'+
     '</div>'+
     '<div id="assignList"><div class="aw-empty"><span class="aw-spin aw-spin-dark"></span></div></div>';
   AW.els('[data-amode]').forEach(function(t){
@@ -2776,7 +2776,7 @@ function loadTranslateList(){
     var box = document.getElementById('assignList');
     if(!box) return;
     if(!sets.length){
-      box.innerHTML='<div class="aw-empty">'+AW.icon('modes')+'<p>Chưa có bài Luyện Dịch. Bấm "New Translate Set" để tạo.</p></div>';
+      box.innerHTML='<div class="aw-empty">'+AW.icon('modes')+'<p>No Translation Sets yet. Click "New Translate Set" to create one.</p></div>';
       return;
     }
     box.innerHTML='<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
@@ -2815,9 +2815,11 @@ function loadTranslateList(){
 }
 
 /* ── Create Translate Set modal ── */
-var _trItems=[];
+var _trItems=[], _trGenBoxHtml='';
 function openTrModal(){
   _trItems=[];
+  // Snapshot gen box HTML so we can restore it after the inline key banner
+  setTimeout(function(){ var b=document.getElementById('trGenBox'); if(b) _trGenBoxHtml=b.innerHTML; }, 50);
   document.getElementById('trSaveBtn').disabled=true;
   document.getElementById('trPreviewWrap').style.display='none';
   document.getElementById('trGenStatus').textContent='';
@@ -2844,26 +2846,49 @@ function trGenItems(){
   var title=(document.getElementById('tr-title').value||'').trim();
   if(!words){AW.toast('Nhập danh sách từ vựng trước.','warn');return;}
   var key=AW.geminiKey.get();
-  if(!key){AW.toast('Cần Gemini API key — vào Settings để nhập.','warn');return;}
+  if(!key){
+    // Show inline key input banner instead of sending user to Settings
+    var genBox=document.getElementById('trGenBox');
+    genBox.innerHTML=
+      '<div style="background:#FFF8EC;border:1px solid #F0D9A0;border-radius:var(--aw-r);padding:12px 14px">'+
+        '<div style="font-size:.85rem;font-weight:700;color:#7A5000;margin-bottom:8px">🔑 Chưa có Gemini API key</div>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<input type="password" id="trInlineKey" class="aw-input" placeholder="AIza… (Gemini API key của bạn)" '+
+            'style="flex:1;font-size:.85rem" autocomplete="off">'+
+          '<button class="aw-btn aw-btn-primary" id="trKeyOk" style="padding:9px 16px;font-size:.85rem;white-space:nowrap">Lưu &amp; Sinh câu</button>'+
+        '</div>'+
+        '<p style="font-size:.74rem;color:#7A5000;margin:6px 0 0">Lấy key miễn phí tại <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--aw-primary)">aistudio.google.com/apikey</a> · Key được lưu trong trình duyệt, không gửi lên server.</p>'+
+      '</div>';
+    document.getElementById('trKeyOk').onclick=function(){
+      var k=(document.getElementById('trInlineKey').value||'').trim();
+      if(!k){AW.toast('Nhập API key trước.','warn');return;}
+      AW.geminiKey.set(k);
+      AW.toast('Key đã lưu!','ok');
+      // Restore gen box and run
+      genBox.innerHTML=_trGenBoxHtml;
+      trGenItems();
+    };
+    return;
+  }
   var genBtn=document.getElementById('trGenBtn');
   var regenBtn=document.getElementById('trRegenBtn');
   var statusEl=document.getElementById('trGenStatus');
-  genBtn.disabled=true; statusEl.textContent='⏳ Đang sinh 30 câu với Gemini…';
+  genBtn.disabled=true; statusEl.textContent='⏳ Generating 20 sentences with Gemini…';
   var wordList=words.split('\n').map(function(w){return w.trim();}).filter(Boolean).join(', ');
   var prompt=[
     'You are an EFL teacher creating translation exercises for Vietnamese university students.',
-    'Generate EXACTLY 30 translation exercise items.',
+    'Generate EXACTLY 20 translation exercise items.',
     'RULES:',
     '- Return ONLY a JSON array, no markdown, no explanation.',
     '- Items 0,2,4,6… → direction "en2vi"; items 1,3,5,7… → direction "vi2en".',
-    '- Each item: {id:"t01"–"t30", direction, source, modelAnswer, targetWords:[], isTreasure:bool, pattern:null|string}',
+    '- Each item: {id:"t01"–"t20", direction, source, modelAnswer, targetWords:[], isTreasure:bool, pattern:null|string}',
     '- source: sentence to translate (≤25 words, 1 idea). modelAnswer: accurate natural translation.',
     '- Each item must use ≥1 word from the vocabulary list.',
-    '- isTreasure:true for ~4–5 items with a notable grammar/collocation pattern; pattern names the pattern.',
+    '- isTreasure:true for ~3–4 items with a notable grammar/collocation pattern; pattern names the pattern.',
     '- Level: B1–B2 CEFR.',
     'TARGET VOCABULARY: '+wordList,
     (title?'THEME: '+title:''),
-    'Return ONLY the JSON array of 30 objects.'
+    'Return ONLY the JSON array of 20 objects.'
   ].join('\n');
   var MODELS=['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'];
   var mi=0;
@@ -2872,15 +2897,15 @@ function trGenItems(){
     var m=MODELS[mi++];
     fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent?key='+encodeURIComponent(key),{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:8192,temperature:0.4}})
+      body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:6000,temperature:0.4}})
     }).then(function(r){return r.json();}).then(function(d){
       var parts=(((d.candidates||[])[0]||{}).content||{}).parts||[];
       var text=parts.map(function(p){return p.text||'';}).join('').trim();
       if(!text) throw new Error('Empty response');
       text=text.replace(/```json[\n]?/g,'').replace(/```[\n]?/g,'').trim();
       var arr=JSON.parse(text);
-      if(!Array.isArray(arr)||arr.length<10) throw new Error('Only '+arr.length+' items');
-      onSuccess(arr.slice(0,30));
+      if(!Array.isArray(arr)||arr.length<8) throw new Error('Only '+arr.length+' items');
+      onSuccess(arr.slice(0,20));
     }).catch(function(e){
       if(mi<MODELS.length) tryModel();
       else onFail(e.message||String(e));
@@ -2945,7 +2970,7 @@ function saveTrSet(){
   }).then(function(res){
     document.getElementById('trSaveBtn').disabled=false;
     if(res&&res.success){
-      AW.toast('Đã tạo bài Luyện Dịch!','ok');
+      AW.toast('Translation set created!','ok');
       closeTrModal();
       // If currently on Assignments Translate tab, refresh
       var activeTab=document.querySelector('[data-amode].active');
@@ -2965,7 +2990,7 @@ startAlerts();
 <div class="aw-modal-bg" id="trModal">
   <div class="aw-modal-card" style="max-width:680px;width:100%;max-height:90vh;overflow-y:auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h2 style="font-family:var(--aw-font-display);font-size:1.2rem;margin:0">🔄 Tạo bài Luyện Dịch</h2>
+      <h2 style="font-family:var(--aw-font-display);font-size:1.2rem;margin:0">🔄 Create Translation Set</h2>
       <button onclick="closeTrModal()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--aw-ink-3)">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:14px">
@@ -2989,26 +3014,26 @@ startAlerts();
           <label class="aw-label">Pass Score (%)</label>
           <input class="aw-input" id="tr-pass" type="number" min="50" max="100" value="85">
         </div>
-        <div class="aw-field" style="flex:1;min-width:170px">
+        <div class="aw-field" style="flex:1;min-width:200px">
           <label class="aw-label">Session Start *</label>
-          <input class="aw-input" id="tr-start" type="datetime-local">
+          <input class="aw-input" id="tr-start" type="datetime-local" step="60">
         </div>
         <div class="aw-field" style="flex:0 0 110px">
           <label class="aw-label">Thời gian (phút)</label>
           <input class="aw-input" id="tr-duration" type="number" min="10" max="300" placeholder="VD: 90">
         </div>
-        <div class="aw-field" style="flex:1;min-width:170px">
+        <div class="aw-field" style="flex:1;min-width:200px">
           <label class="aw-label">Deadline (nếu không dùng phút)</label>
-          <input class="aw-input" id="tr-deadline" type="datetime-local">
+          <input class="aw-input" id="tr-deadline" type="datetime-local" step="60">
         </div>
       </div>
-      <div style="background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r);padding:14px 16px">
-        <div style="font-size:.85rem;font-weight:600;margin-bottom:8px">✨ Sinh 30 câu AI
-          <span style="font-weight:400;font-size:.78rem;color:var(--aw-ink-3)">(Gemini key giáo viên)</span>
+      <div style="background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r);padding:14px 16px" id="trGenBox">
+        <div style="font-size:.85rem;font-weight:600;margin-bottom:8px">✨ Generate sentences with AI
+          <span style="font-weight:400;font-size:.78rem;color:var(--aw-ink-3)">(teacher's Gemini key)</span>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="aw-btn aw-btn-primary" id="trGenBtn" onclick="trGenItems()" style="padding:8px 16px">✨ Sinh câu</button>
-          <button class="aw-btn aw-btn-ghost" id="trRegenBtn" style="display:none;padding:8px 14px" onclick="trGenItems()">↺ Thử lại</button>
+          <button class="aw-btn aw-btn-primary" id="trGenBtn" onclick="trGenItems()" style="padding:8px 16px">✨ Generate</button>
+          <button class="aw-btn aw-btn-ghost" id="trRegenBtn" style="display:none;padding:8px 14px" onclick="trGenItems()">↺ Retry</button>
         </div>
         <div id="trGenStatus" style="font-size:.8rem;color:var(--aw-ink-3);margin-top:8px;min-height:16px"></div>
       </div>
