@@ -777,6 +777,7 @@ function wireAutoOverall(critInputs, overallInput){
 }
 
 var livePoll=null, liveSelected=null, liveData=[], liveTaskFilter='all', liveView='grid';
+var translateLiveData=[];
 function showLive(){
   document.getElementById('awPageTitle').textContent='Live Observation';
   // load inclass assignments for filter
@@ -846,9 +847,15 @@ function showLive(){
 function stopLivePoll(){ if(livePoll){clearInterval(livePoll);livePoll=null;} }
 function pollLive(){
   AW.api('teacher.getLive',{class:curClass()}).then(function(res){
-    // Live Observation only tracks students doing In-class Practice
-    liveData=((res&&res.data)||[]).filter(function(s){ return s.mode==='inclass'; });
+    var all = (res&&res.data)||[];
+    // Separate inclass (writing) from translate students
+    liveData = all.filter(function(s){ return s.mode==='inclass'; });
+    // Store translate live data globally for translate live panel
+    translateLiveData = all.filter(function(s){ return s.mode==='translate'; });
     renderLive();
+    // Refresh translate live panel if it's currently shown
+    var tlBox = document.getElementById('trLiveBox');
+    if(tlBox) renderTranslateLive(tlBox);
   });
   pollLiveQuestions();
 }
@@ -2002,8 +2009,11 @@ function showAssignments(){
     t.onclick=function(){
       AW.els('[data-amode]').forEach(function(x){x.classList.remove('active');});
       t.classList.add('active');
-      if(t.dataset.amode==='translate') loadTranslateList();
-      else loadAssignmentList(t.dataset.amode);
+      if(t.dataset.amode==='translate'){
+        loadTranslateList();
+        // Start live poll so the Live Progress panel auto-refreshes
+        if(!livePoll){ pollLive(); livePoll=setInterval(pollLive,10000); }
+      } else loadAssignmentList(t.dataset.amode);
     };
   });
   loadAssignmentList('inclass');
@@ -2779,39 +2789,100 @@ function loadTranslateList(){
       box.innerHTML='<div class="aw-empty">'+AW.icon('modes')+'<p>No Translation Sets yet. Click "New Translate Set" to create one.</p></div>';
       return;
     }
-    box.innerHTML='<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
-      '<th>Tiêu đề</th><th>Items</th><th>Pass</th><th>Session Start</th><th>Deadline</th><th>Status</th><th></th>'+
+    // Separate active/upcoming from closed for live panel
+    var activeSets = sets.filter(function(s){ return s.sessionStatus==='open'||s.sessionStatus==='upcoming'; });
+    var html = '';
+    // ── Live progress panel (only if any set is open/upcoming) ────
+    if(activeSets.length){
+      html += '<div id="trLiveBox" style="margin-bottom:18px;background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r);padding:14px 16px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+          '<h4 style="margin:0;font-size:.9rem">🟢 Live Progress</h4>'+
+          '<span style="font-size:.72rem;color:var(--aw-ink-3)">Updates every 10s</span>'+
+        '</div>'+
+        '<div id="trLiveGrid" style="font-size:.82rem;color:var(--aw-ink-3)">Chờ sinh viên bắt đầu làm…</div>'+
+      '</div>';
+    }
+    // ── Assignment list table ─────────────────────────────────────
+    html += '<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
+      '<th>Title</th><th>Items</th><th>Pass</th><th>Order</th><th>Session Start</th><th>Deadline</th><th>Status</th><th></th>'+
       '</tr></thead><tbody>'+
       sets.map(function(s){
         var active = s.active;
         var badge = s.sessionStatus==='open'
-          ? '<span style="color:var(--aw-writing);font-size:.75rem;font-weight:700">● Đang mở</span>'
+          ? '<span style="color:var(--aw-writing);font-size:.75rem;font-weight:700">● Open</span>'
           : s.sessionStatus==='upcoming'
-            ? '<span style="color:#A66B00;font-size:.75rem;font-weight:700">⏳ Chưa mở</span>'
-            : '<span style="color:var(--aw-ink-3);font-size:.75rem">✓ Đã đóng</span>';
+            ? '<span style="color:#A66B00;font-size:.75rem;font-weight:700">⏳ Upcoming</span>'
+            : '<span style="color:var(--aw-ink-3);font-size:.75rem">✓ Closed</span>';
+        var orderLabel = s.shuffle !== false ? '🔀 Random' : '📋 Ordered';
         return '<tr>'+
           '<td><b>'+AW.esc(s.title)+'</b></td>'+
           '<td style="text-align:center">'+s.itemCount+'</td>'+
           '<td style="text-align:center">'+s.passScore+'%</td>'+
+          '<td style="font-size:.78rem">'+orderLabel+'</td>'+
           '<td style="font-size:.82rem">'+AW.fmtDate(s.sessionStart)+'</td>'+
           '<td style="font-size:.82rem">'+(s.deadline?AW.fmtDate(s.deadline):'—')+'</td>'+
           '<td>'+badge+'</td>'+
           '<td><button class="aw-btn aw-btn-ghost" style="padding:3px 10px;font-size:.75rem;color:'+(active?'var(--aw-danger)':'var(--aw-writing)')+'"'+
             ' data-tr-toggle="'+AW.esc(s.setId)+'" data-tr-cur="'+(active?'1':'0')+'">'+
-            (active?'Đóng':'Mở lại')+'</button></td>'+
+            (active?'Close':'Reopen')+'</button></td>'+
         '</tr>';
       }).join('')+'</tbody></table></div>';
+    box.innerHTML = html;
+
+    // Wire toggle buttons
     AW.els('[data-tr-toggle]').forEach(function(btn){
       btn.onclick=function(){
         var sid=btn.getAttribute('data-tr-toggle');
         var cur=btn.getAttribute('data-tr-cur')==='1';
         AW.api('translate.update',{setId:sid,active:!cur}).then(function(r){
-          if(r&&r.success){AW.toast('Đã cập nhật.','ok');loadTranslateList();}
-          else AW.toast('Lỗi cập nhật.','err');
+          if(r&&r.success){AW.toast('Updated.','ok');loadTranslateList();}
+          else AW.toast('Error.','err');
         });
       };
     });
-  }).catch(function(){ AW.toast('Lỗi tải danh sách bài dịch.','err'); });
+
+    // Render live panel from cached data immediately, then poll
+    var tlBox = document.getElementById('trLiveBox');
+    if(tlBox){
+      renderTranslateLive(tlBox, sets.filter(function(s){ return s.sessionStatus==='open'; }));
+    }
+  }).catch(function(){ AW.toast('Error loading translate list.','err'); });
+}
+
+function renderTranslateLive(container, openSets){
+  var box = document.getElementById('trLiveGrid');
+  if(!box) return;
+  // Filter live data to translate mode students in current class
+  var data = translateLiveData.filter(function(s){ return String(s.class)===String(curClass()); });
+  if(!data.length){
+    box.innerHTML = '<span style="color:var(--aw-ink-3)">Chờ sinh viên bắt đầu làm…</span>';
+    return;
+  }
+  // Group by setId from snapshot
+  box.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">'+
+    data.map(function(s){
+      var snap = {};
+      try{ snap=JSON.parse(s.snapshot||'{}'); }catch(e){}
+      var qAns = parseInt(snap.questionsAnswered||s.wordCount||0,10);
+      var cleared = parseInt(snap.clearedCount||0,10);
+      var total = parseInt(snap.totalItems||20,10);
+      var pct = total ? Math.round(cleared/total*100) : 0;
+      var isSubmitted = s.status==='Submitted';
+      var isStale = s.status==='Offline';
+      var statusColor = isSubmitted?'var(--aw-writing)':isStale?'var(--aw-ink-3)':'var(--aw-primary)';
+      var statusIcon = isSubmitted?'✅':isStale?'💤':'✍️';
+      return '<div style="background:var(--aw-surface);border:1px solid var(--aw-border-2);border-radius:8px;padding:10px 11px">'+
+        '<div style="font-weight:700;font-size:.82rem;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+AW.esc(s.name||s.studentId)+'</div>'+
+        '<div style="font-size:.72rem;color:'+statusColor+';margin-bottom:6px">'+statusIcon+' '+(isSubmitted?'Completed':isStale?'Offline':'Active')+' · Q'+qAns+'</div>'+
+        '<div style="font-size:.72rem;color:var(--aw-ink-3);margin-bottom:4px">Cleared: <b style="color:var(--aw-ink)">'+cleared+'/'+total+'</b></div>'+
+        '<div style="height:5px;background:var(--aw-border-2);border-radius:3px">'+
+          '<div style="width:'+pct+'%;height:100%;background:var(--aw-writing);border-radius:3px"></div>'+
+        '</div>'+
+        (snap.title?'<div style="font-size:.68rem;color:var(--aw-ink-3);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+AW.esc(snap.title)+'</div>':'')+
+      '</div>';
+    }).join('')+
+  '</div>'+
+  '<div style="font-size:.7rem;color:var(--aw-ink-3);margin-top:8px;text-align:right">'+data.length+' student(s) active · '+new Date().toLocaleTimeString('vi-VN')+'</div>';
 }
 
 /* ── Create Translate Set modal ── */
@@ -2833,6 +2904,7 @@ function openTrModal(){
   document.getElementById('tr-title').value='';
   document.getElementById('tr-target-words').value='';
   document.getElementById('tr-pass').value='85';
+  document.getElementById('tr-shuffle').value='random';
   document.getElementById('tr-duration').value='';
   document.getElementById('tr-deadline').value='';
   var d=new Date(Date.now()+5*60000), off=d.getTimezoneOffset()*60000;
@@ -2942,6 +3014,7 @@ function saveTrSet(){
   var title=(document.getElementById('tr-title').value||'').trim();
   var words=(document.getElementById('tr-target-words').value||'').trim();
   var pass=parseInt(document.getElementById('tr-pass').value,10)||85;
+  var shuffle=(document.getElementById('tr-shuffle').value||'random')==='random';
   var start=document.getElementById('tr-start').value;
   var dur=parseInt(document.getElementById('tr-duration').value,10)||0;
   var dl=document.getElementById('tr-deadline').value;
@@ -2968,7 +3041,8 @@ function saveTrSet(){
 
   AW.api('translate.create',{
     setId:setId, classId:classId, title:title, targetWords:words,
-    passScore:pass, sessionStart:start, sessionEnd:sessionEnd,
+    passScore:pass, shuffle:shuffle,
+    sessionStart:start, sessionEnd:sessionEnd,
     deadline:dl||sessionEnd, durationMin:dur||'',
     items:_trItems, teacherEmail:sess.email||''
   }).then(function(res){
@@ -3026,6 +3100,13 @@ startAlerts();
         <div class="aw-field" style="flex:0 0 110px">
           <label class="aw-label">Pass Score (%)</label>
           <input class="aw-input" id="tr-pass" type="number" min="50" max="100" value="85">
+        </div>
+        <div class="aw-field" style="flex:0 0 170px">
+          <label class="aw-label">Thứ tự câu</label>
+          <select class="aw-input" id="tr-shuffle">
+            <option value="random">🔀 Random (mỗi SV khác nhau)</option>
+            <option value="ordered">📋 Ordered (tất cả cùng thứ tự)</option>
+          </select>
         </div>
         <div class="aw-field" style="flex:1;min-width:200px">
           <label class="aw-label">Session Start *</label>

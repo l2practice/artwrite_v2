@@ -989,22 +989,50 @@ function renderTrIntro(status){
   if(sb) sb.onclick=function(){ startTrRun(); };
 }
 
-function pickTrBatch(items,clearedIds,n){
+function pickTrBatch(items, clearedIds, n, shuffle){
   var cs={}; clearedIds.forEach(function(id){cs[id]=true;});
   function sh(a){ for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;} return a; }
-  var pending=sh(items.filter(function(it){return !cs[it.id];}));
-  var batch=pending.slice(0,n);
-  if(batch.length<n){
-    var rest=sh(items.filter(function(it){return !pending.some(function(p){return p.id===it.id;});}));
-    batch=batch.concat(rest.slice(0,n-batch.length));
+  var pending = items.filter(function(it){return !cs[it.id];});
+  // Ordered mode: keep original array order; Random mode: shuffle
+  if(shuffle !== false) pending = sh(pending.slice());
+  var batch = pending.slice(0,n);
+  if(batch.length < n){
+    var rest = items.filter(function(it){return !pending.some(function(p){return p.id===it.id;});});
+    if(shuffle !== false) rest = sh(rest.slice());
+    batch = batch.concat(rest.slice(0, n-batch.length));
   }
   return batch;
 }
 
 function startTrRun(){
-  _trBatch=pickTrBatch(_trSet.items||[],_trProgress.clearedItemIds||[],5);
+  var doShuffle = _trSet.shuffle !== false; // default true
+  _trBatch=pickTrBatch(_trSet.items||[],_trProgress.clearedItemIds||[],5,doShuffle);
   _trBatchResults=[]; _trBatchIdx=0; _trRunStart=Date.now();
   renderTrQuestion();
+}
+
+/* Send a lightweight heartbeat so teacher can see progress in real time.
+   Reuses write.heartbeat action → LiveSessions tab (1 row per student, upserted). */
+function trHeartbeat(questionsAnswered, clearedCount){
+  var totalItems = (_trSet&&_trSet.items&&_trSet.items.length)||20;
+  AW.api('write.heartbeat',{
+    studentId: sess.studentId,
+    name:      sess.name||'',
+    class:     sess.class||'',
+    topicId:   (_trSet&&_trSet.setId)||'',
+    topic:     (_trSet&&_trSet.title)||'Translation Practice',
+    mode:      'translate',
+    status:    'Translating',
+    wordCount: questionsAnswered,   // repurpose wordCount field as questions answered
+    snapshot:  JSON.stringify({
+      setId:             (_trSet&&_trSet.setId)||'',
+      title:             (_trSet&&_trSet.title)||'',
+      questionsAnswered: questionsAnswered,
+      clearedCount:      clearedCount,
+      totalItems:        totalItems,
+      runIndex:          (_trProgress&&_trProgress.nextRunIndex)||1,
+    })
+  });
 }
 
 function renderTrQuestion(){
@@ -1057,6 +1085,10 @@ function renderTrQuestion(){
       ansEl.disabled=true;
       _trBatchResults.push({itemId:q.id,score:result.score,feedback:result.feedback,answer:answer,modelAnswer:q.modelAnswer});
       showTrFeedback(q,answer,result);
+      // Heartbeat: teacher sees progress immediately after each question
+      var prevCleared = (_trProgress.clearedItemIds||[]).length;
+      var thisRoundCleared = _trBatchResults.filter(function(r){ return r.score >= ((_trSet&&_trSet.passScore)||85); }).length;
+      trHeartbeat(_trBatchResults.length, prevCleared + thisRoundCleared);
     });
   };
 }
@@ -1252,6 +1284,20 @@ function renderTrRunResult(){
       if(r&&r.success){_trProgress.clearedItemIds=newCleared;_trProgress.nextRunIndex=runIdx+1;_trProgress.runs=(_trProgress.runs||0)+1;}
       else if(r&&r.error) AW.toast(r.error,'err',4000);
     }).catch(function(){AW.toast('Lỗi lưu kết quả.','err');});
+    // Final heartbeat marking run complete
+    AW.api('write.heartbeat',{
+      studentId:sess.studentId, name:sess.name||'', class:sess.class||'',
+      topicId:_trSet.setId, topic:_trSet.title, mode:'translate',
+      status:'Submitted',
+      wordCount: _trBatchResults.length,
+      snapshot: JSON.stringify({
+        setId:_trSet.setId, title:_trSet.title,
+        questionsAnswered: _trBatchResults.length,
+        clearedCount: newCleared.length,
+        totalItems: (_trSet.items||[]).length,
+        runIndex: runIdx, runScore: runScore,
+      })
+    });
   }
   var cleared=newCleared.length, ttl=(_trSet.items||[]).length, pct=ttl?Math.round(cleared/ttl*100):0;
   var scCol=runScore>=85?'var(--aw-writing)':(runScore>=60?'#A66B00':'var(--aw-danger)');
