@@ -1494,21 +1494,21 @@ function showResults(){
         '<div style="display:flex;gap:16px;flex-wrap:wrap;padding:14px 16px;'+
           'background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r);margin-bottom:16px">'+
           '<div><div style="font-size:1.4rem;font-weight:700">'+d.studentCount+'</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">SV đã làm</div></div>'+
-          '<div><div style="font-size:1.4rem;font-weight:700">'+d.runsCount+'</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Lượt làm</div></div>'+
+          '<div><div style="font-size:1.4rem;font-weight:700">'+d.runsCount+'</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Total attempts</div></div>'+
           '<div><div style="font-size:1.4rem;font-weight:700;color:var(--aw-writing)">'+d.avgScore+'%</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Avg score</div></div>'+
           '<div><div style="font-size:1.4rem;font-weight:700">'+d.avgCleared+'/20</div><div style="font-size:.72rem;color:var(--aw-ink-3);text-transform:uppercase">Avg cleared</div></div>'+
         '</div>'+
         '<div class="aw-table-wrap"><table class="aw-table"><thead><tr>'+
-          '<th>Student ID</th><th>Tên</th><th>Runs</th><th>Best %</th><th>Last %</th><th>Cleared</th><th>Last active</th>'+
-        '</tr></thead><tbody>'+
+          '<th>Student ID</th><th>Tên</th><th>Attempts</th><th>Best %</th><th>Last %</th><th>Cleared</th><th>Last active</th>'+
+          '</tr></thead><tbody>'+
         (stArr.length ? stArr.map(function(s){
           var cc=s.clearedCount, ttl=20, pct=Math.round(cc/ttl*100);
-          var col=cc>=ttl?'var(--aw-writing)':(cc>=20?'#A66B00':'var(--aw-ink)');
+          var col=cc>=ttl?'var(--aw-writing)':(cc>=15?'#A66B00':'var(--aw-ink)');
           var sc=s.bestScore>=85?'var(--aw-writing)':(s.bestScore>=60?'#A66B00':'var(--aw-danger)');
           return '<tr>'+
             '<td><b>'+AW.esc(s.studentId)+'</b></td>'+
             '<td>'+AW.esc(s.name)+'</td>'+
-            '<td style="text-align:center">'+s.runs+'</td>'+
+            '<td style="text-align:center"><b>'+s.runs+'</b></td>'+
             '<td style="text-align:center"><b style="color:'+sc+'">'+s.bestScore+'%</b></td>'+
             '<td style="text-align:center">'+s.lastScore+'%</td>'+
             '<td><div style="display:flex;align-items:center;gap:6px"><b style="color:'+col+'">'+cc+'/'+ttl+'</b>'+

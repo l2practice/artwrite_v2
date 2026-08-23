@@ -977,16 +977,26 @@ function renderTrIntro(status){
           '<div style="width:'+pct+'%;height:100%;background:var(--aw-writing);border-radius:4px"></div>'+
         '</div>'+
       '</div>'+
-      (cleared>=total&&!isClosed?'<p style="color:var(--aw-writing);font-weight:700;margin:0 0 12px">🎉 Hoàn thành tất cả câu!</p>':'')+
+      (cleared>=total&&!isClosed?'<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:8px 12px;margin:0 0 12px;font-size:.85rem;color:var(--aw-writing);font-weight:700">🎉 All sentences cleared! Play again to practise more.</div>':'')+
       '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-        (!isClosed?'<button class="aw-btn aw-btn-primary" id="trStartBtn" style="padding:11px 28px">'+
-          (cleared>=total?'Làm lại từ đầu':'Bắt đầu lượt '+(_trProgress.nextRunIndex||1))+
-        '</button>':'')+
-        (_trProgress.runs>0?'<button class="aw-btn aw-btn-ghost" onclick="showTrHistory()" style="padding:11px 18px">📊 Kết quả của tôi</button>':'')+
+        (!isClosed&&cleared<total?
+          '<button class="aw-btn aw-btn-primary" id="trStartBtn" style="padding:11px 28px">Start round '+(_trProgress.nextRunIndex||1)+' →</button>'
+          :(!isClosed&&cleared>=total?
+            '<button class="aw-btn aw-btn-primary" id="trStartBtn" style="padding:11px 28px">🔄 Play again</button>':
+            ''
+          )
+        )+
+        (_trProgress.runs>0?'<button class="aw-btn aw-btn-ghost" onclick="showTrHistory()" style="padding:11px 18px">📊 My history</button>':'')+
       '</div>'+
     '</div>';
   var sb=document.getElementById('trStartBtn');
-  if(sb) sb.onclick=function(){ startTrRun(); };
+  if(sb) sb.onclick=function(){
+    if(cleared >= total){
+      // Play again: reset clearedItemIds so all 20 sentences come back
+      _trProgress.clearedItemIds = [];
+    }
+    startTrRun();
+  };
 }
 
 function pickTrBatch(items, clearedIds, n, shuffle){
@@ -1301,26 +1311,48 @@ function renderTrRunResult(){
   }
   var cleared=newCleared.length, ttl=(_trSet.items||[]).length, pct=ttl?Math.round(cleared/ttl*100):0;
   var scCol=runScore>=85?'var(--aw-writing)':(runScore>=60?'#A66B00':'var(--aw-danger)');
-  document.getElementById('awPageTitle').textContent='Kết quả lượt';
+  var allCleared = cleared >= ttl;
+  document.getElementById('awPageTitle').textContent='Round '+runIdx+' result';
   content.innerHTML=
     '<div style="max-width:520px;margin:16px auto;text-align:center;background:var(--aw-surface);border:1px solid var(--aw-border-2);border-radius:var(--aw-r);padding:28px 24px">'+
       '<div style="font-size:2.8rem;font-weight:800;color:'+scCol+'">'+runScore+'%</div>'+
-      '<div style="font-size:.95rem;font-weight:700;margin:6px 0 16px;color:'+scCol+'">'+
-        (passed?'✅ Đạt lượt này!':'❌ Chưa đạt — thử lại nhé')+' · '+cleared+'/'+ttl+' câu clear</div>'+
+      '<div style="font-size:.95rem;font-weight:700;margin:6px 0 4px;color:'+scCol+'">'+
+        (passed?'✅ Passed!':'❌ Not passed')+' · Round '+runIdx+' · '+cleared+'/'+ttl+' cleared</div>'+
+      '<div style="font-size:.78rem;color:var(--aw-ink-3);margin-bottom:14px">Attempt #'+runIdx+'</div>'+
       '<div style="height:8px;background:var(--aw-border-2);border-radius:4px;margin-bottom:16px">'+
         '<div style="width:'+pct+'%;height:100%;background:var(--aw-writing);border-radius:4px"></div>'+
       '</div>'+
-      (passed&&cleared<ttl?'<p style="font-size:.86rem;color:var(--aw-ink-2);margin-bottom:16px">Còn '+(ttl-cleared)+' câu nữa. Tiếp tục!</p>':'')+
-      (passed&&cleared>=ttl?'<p style="font-size:.9rem;color:var(--aw-writing);font-weight:700;margin-bottom:16px">🎉 Bạn đã hoàn thành tất cả '+ttl+' câu!</p>':'')+
-      (!passed?'<p style="font-size:.86rem;color:var(--aw-ink-3);margin-bottom:16px">Cần ≥ '+(_trSet.passScore||85)+'% để mở lượt tiếp.</p>':'')+
+      (allCleared?
+        '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:10px 14px;margin-bottom:16px">'+
+          '<p style="font-size:.9rem;color:var(--aw-writing);font-weight:700;margin:0 0 4px">🎉 All '+ttl+' sentences cleared!</p>'+
+          '<p style="font-size:.82rem;color:var(--aw-ink-2);margin:0">Play again to reinforce — sentences restart from the beginning.</p>'+
+        '</div>'
+        :(passed&&cleared<ttl?'<p style="font-size:.86rem;color:var(--aw-ink-2);margin-bottom:16px">'+(ttl-cleared)+' sentences left. Keep going!</p>':
+        '<p style="font-size:.86rem;color:var(--aw-ink-3);margin-bottom:16px">Need ≥ '+(_trSet.passScore||85)+'% per sentence to clear. Try again!</p>'))+
       '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'+
-        (passed&&cleared<ttl?'<button class="aw-btn aw-btn-primary" id="trCont" style="padding:11px 24px">Continue 5 more →</button>':'')+
-        (!passed?'<button class="aw-btn aw-btn-primary" id="trRetry" style="padding:11px 22px">Làm lại lượt này</button>':'')+
-        '<button class="aw-btn aw-btn-ghost" onclick="showTranslate()" style="padding:11px 18px">← Danh sách</button>'+
+        // Always show a "continue" or "play again" button — no completion lock
+        (passed&&cleared<ttl?
+          '<button class="aw-btn aw-btn-primary" id="trCont" style="padding:11px 24px">Continue 5 more →</button>':'')+
+        (allCleared?
+          '<button class="aw-btn aw-btn-primary" id="trPlayAgain" style="padding:11px 24px">🔄 Play again</button>':'')+
+        (!passed?
+          '<button class="aw-btn aw-btn-primary" id="trRetry" style="padding:11px 22px">Retry this round</button>':'')+
+        '<button class="aw-btn aw-btn-ghost" onclick="showTranslate()" style="padding:11px 18px">← List</button>'+
       '</div>'+
     '</div>';
+
+  // Continue (still sentences left)
   var cb=document.getElementById('trCont');
-  if(cb) cb.onclick=function(){startTrRun();};
+  if(cb) cb.onclick=function(){ startTrRun(); };
+
+  // Play again — reset cleared so all 20 sentences come back fresh
+  var pa=document.getElementById('trPlayAgain');
+  if(pa) pa.onclick=function(){
+    _trProgress.clearedItemIds=[];  // reset for a fresh full run
+    startTrRun();
+  };
+
+  // Retry same round (didn't pass)
   var rb=document.getElementById('trRetry');
   if(rb) rb.onclick=function(){_trBatchResults=[];_trBatchIdx=0;_trRunStart=Date.now();renderTrQuestion();};
 }
