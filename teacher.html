@@ -78,6 +78,11 @@
   /* annotation modal */
   .aw-modal-bg{position:fixed;inset:0;background:rgba(16,34,46,.5);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
   .aw-modal-bg.show{display:flex}
+  /* Toolbar buttons — uniform 30×30, no inline overrides needed */
+  .aw-tbtn{height:30px;min-width:30px;padding:0 8px;border:1.5px solid var(--aw-border-2);border-radius:6px;background:var(--aw-surface);cursor:pointer;color:var(--aw-ink-2);font-weight:700;font-size:.82rem;font-family:var(--aw-font-body);display:inline-flex;align-items:center;justify-content:center;gap:3px;box-sizing:border-box;line-height:1;white-space:nowrap;vertical-align:middle}
+  .aw-tbtn:hover{background:var(--aw-primary-lt);border-color:var(--aw-primary);color:var(--aw-primary)}
+  .aw-tbtn.on{background:var(--aw-primary);color:#fff;border-color:var(--aw-primary)}
+  .ann-sep{width:1px;background:var(--aw-border-2);align-self:stretch;margin:2px 2px;display:inline-block}
   .aw-modal{background:var(--aw-surface);border-radius:var(--aw-r-lg);width:80vw;max-width:1400px;height:80vh;max-height:80vh;overflow:hidden;display:grid;grid-template-columns:1fr 320px;box-shadow:var(--aw-shadow-lg)}
   .aw-modal-card{background:var(--aw-surface);border-radius:var(--aw-r-lg);padding:24px 26px;box-shadow:var(--aw-shadow-lg)}
   .aw-modal .aw-modal-doc{overflow-y:auto}
@@ -236,30 +241,26 @@
         <div><b id="mStudent">Student</b> <span style="color:var(--aw-ink-3)" id="mTopic"></span></div>
         <button class="aw-btn" style="padding:6px 18px;background:#E5484D;color:#fff;font-weight:600" id="mClose">✕ Close</button>
       </div>
-      <!-- annotation toolbar -->
-      <div style="display:flex;gap:2px;flex-wrap:wrap;align-items:center;background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r-sm);padding:6px;margin-bottom:8px;position:relative">
-        <!-- Basic formatting -->
+      <!-- annotation toolbar — uniform 30px buttons, mousedown preventDefault preserves selection -->
+      <div id="annToolbar" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:var(--aw-r-sm);padding:6px;margin-bottom:8px;position:relative;user-select:none">
         <button class="aw-tbtn" id="annBold" title="Bold"><b>B</b></button>
         <button class="aw-tbtn" id="annItalic" title="Italic"><i>I</i></button>
         <button class="aw-tbtn" id="annUnder" title="Underline"><u>U</u></button>
-        <button class="aw-tbtn" id="annStrike" title="Strikethrough — mark deletion">S̶</button>
-        <span style="width:1px;background:var(--aw-border-2);margin:2px 4px;align-self:stretch;display:inline-block"></span>
+        <button class="aw-tbtn" id="annStrike" title="Strikethrough">S̶</button>
+        <span class="ann-sep"></span>
         <!-- Text Color -->
         <div style="position:relative">
-          <button class="aw-tbtn" id="annTextColorBtn" title="Text color — select text first" style="display:flex;align-items:center;gap:3px;padding:4px 7px">
-            <span style="font-weight:700;font-size:.9rem">A</span>
-            <span id="annTextColorBar" style="display:block;width:14px;height:3px;border-radius:1px;background:#E8360C;margin-top:1px"></span>
+          <button class="aw-tbtn" id="annTextColorBtn" title="Text color">
+            <b>A</b><span id="annTextColorBar" style="width:12px;height:3px;border-radius:1px;background:#E8360C"></span>
           </button>
           <div class="ann-color-pop" id="textColorPop">
             <div style="font-size:.7rem;color:var(--aw-ink-3);width:100%;margin-bottom:2px">Text color</div>
-            <!-- row 1: standard -->
             <span class="ann-color-swatch" style="background:#1a1a1a" data-tc="#1a1a1a" title="Black"></span>
             <span class="ann-color-swatch" style="background:#E8360C" data-tc="#E8360C" title="Red"></span>
             <span class="ann-color-swatch" style="background:#0A6EBD" data-tc="#0A6EBD" title="Blue"></span>
             <span class="ann-color-swatch" style="background:#1A9E5C" data-tc="#1A9E5C" title="Green"></span>
             <span class="ann-color-swatch" style="background:#D97706" data-tc="#D97706" title="Orange"></span>
             <span class="ann-color-swatch" style="background:#7C3AED" data-tc="#7C3AED" title="Purple"></span>
-            <!-- row 2: lighter -->
             <span class="ann-color-swatch" style="background:#6B7280" data-tc="#6B7280" title="Gray"></span>
             <span class="ann-color-swatch" style="background:#F87171" data-tc="#F87171" title="Light red"></span>
             <span class="ann-color-swatch" style="background:#60A5FA" data-tc="#60A5FA" title="Light blue"></span>
@@ -267,17 +268,16 @@
             <span class="ann-color-swatch" style="background:#FBBF24" data-tc="#FBBF24" title="Yellow"></span>
             <span class="ann-color-swatch" style="background:#A78BFA" data-tc="#A78BFA" title="Lavender"></span>
             <div class="ann-color-sep"></div>
-            <input type="color" value="#E8360C" id="annTextColorCustom" title="Custom color" style="width:22px;height:22px;padding:0;border:none;border-radius:4px;cursor:pointer">
+            <input type="color" value="#E8360C" id="annTextColorCustom" title="Custom" style="width:22px;height:22px;padding:0;border:none;border-radius:4px;cursor:pointer">
           </div>
         </div>
         <!-- Highlight Color -->
         <div style="position:relative">
-          <button class="aw-tbtn" id="annHlColorBtn" title="Highlight color — select text first" style="display:flex;align-items:center;gap:3px;padding:4px 7px">
-            <span style="font-size:.9rem">🖍</span>
-            <span id="annHlColorBar" style="display:block;width:14px;height:3px;border-radius:1px;background:#FFF1A8;margin-top:1px"></span>
+          <button class="aw-tbtn" id="annHlColorBtn" title="Highlight color">
+            🖍<span id="annHlColorBar" style="width:12px;height:3px;border-radius:1px;background:#FFF1A8"></span>
           </button>
           <div class="ann-color-pop" id="hlColorPop">
-            <div style="font-size:.7rem;color:var(--aw-ink-3);width:100%;margin-bottom:2px">Highlight color</div>
+            <div style="font-size:.7rem;color:var(--aw-ink-3);width:100%;margin-bottom:2px">Highlight</div>
             <span class="ann-color-swatch" style="background:#FFF1A8" data-hc="#FFF1A8" title="Yellow"></span>
             <span class="ann-color-swatch" style="background:#BFDBFE" data-hc="#BFDBFE" title="Blue"></span>
             <span class="ann-color-swatch" style="background:#BBF7D0" data-hc="#BBF7D0" title="Green"></span>
@@ -288,23 +288,20 @@
             <span class="ann-color-swatch" style="background:#D1FAE5" data-hc="#D1FAE5" title="Mint"></span>
             <span class="ann-color-swatch" style="background:#FFEDD5" data-hc="#FFEDD5" title="Peach"></span>
             <div class="ann-color-sep"></div>
-            <span class="ann-color-swatch" style="background:transparent;border:1.5px solid var(--aw-border)" data-hc="transparent" title="Remove highlight">✕</span>
-            <input type="color" value="#FFF1A8" id="annHlColorCustom" title="Custom color" style="width:22px;height:22px;padding:0;border:none;border-radius:4px;cursor:pointer">
+            <span class="ann-color-swatch" style="background:transparent;border:1.5px solid var(--aw-border);font-size:.7rem;line-height:22px;text-align:center" data-hc="transparent" title="Remove">✕</span>
+            <input type="color" value="#FFF1A8" id="annHlColorCustom" title="Custom" style="width:22px;height:22px;padding:0;border:none;border-radius:4px;cursor:pointer">
           </div>
         </div>
-        <!-- Comment -->
-        <button class="aw-tbtn" id="annComment" title="Add comment">💬</button>
-        <span style="width:1px;background:var(--aw-border-2);margin:2px 4px;align-self:stretch;display:inline-block"></span>
-        <!-- Font size -->
+        <button class="aw-tbtn" id="annComment" title="Comment">💬</button>
+        <span class="ann-sep"></span>
         <button class="aw-tbtn" id="annFontDown" title="Smaller text">A−</button>
-        <button class="aw-tbtn" id="annFontUp" title="Larger text" style="font-size:1.05rem">A+</button>
-        <button class="aw-tbtn" id="annClear" title="Clear all formatting">✕ Clear</button>
-        <span style="width:1px;background:var(--aw-border-2);margin:2px 4px;align-self:stretch;display:inline-block"></span>
-        <!-- Zoom (teacher-view only) -->
-        <button class="aw-tbtn" id="annZoomOut" title="Zoom out">🔍−</button>
-        <span id="annZoomLbl" style="align-self:center;font-size:.75rem;color:var(--aw-ink-3);min-width:38px;text-align:center">100%</span>
-        <button class="aw-tbtn" id="annZoomIn" title="Zoom in">🔍+</button>
-        <button class="aw-tbtn" id="annZoomReset" title="Reset zoom" style="font-size:.75rem">Reset</button>
+        <button class="aw-tbtn" id="annFontUp" title="Larger text">A+</button>
+        <button class="aw-tbtn" id="annClear" title="Clear formatting">✕ Clear</button>
+        <span class="ann-sep"></span>
+        <button class="aw-tbtn" id="annZoomOut" title="Zoom out">−</button>
+        <span id="annZoomLbl" style="font-size:.75rem;color:var(--aw-ink-3);min-width:36px;text-align:center">100%</span>
+        <button class="aw-tbtn" id="annZoomIn" title="Zoom in">+</button>
+        <button class="aw-tbtn" id="annZoomReset" title="Reset zoom">↺</button>
       </div>
       <div class="aw-doc-text" id="mText" contenteditable="false"></div>
       <!-- Realtime sync indicators -->
@@ -1297,6 +1294,17 @@ function openAnnotation(s){
     document.getElementById('sOverall')
   );
   document.getElementById('modalBg').classList.add('show');
+  // ── CRITICAL: Prevent toolbar clicks from stealing focus and killing selection ──
+  // When a user clicks a toolbar button, the browser fires mousedown on the button,
+  // which would normally move focus away from mText — destroying the selection BEFORE
+  // onclick fires. preventDefault() on mousedown stops focus transfer while still
+  // allowing onclick to run normally.
+  document.getElementById('annToolbar').addEventListener('mousedown', function(e){
+    // Allow mousedown on <input type="color"> (needs focus to open picker)
+    if(e.target.tagName === 'INPUT') return;
+    e.preventDefault(); // preserve mText selection
+  });
+
   // ── Basic formatting ──────────────────────────────────────────────
   document.getElementById('annBold').onclick   = function(){ document.execCommand('bold'); };
   document.getElementById('annItalic').onclick = function(){ document.execCommand('italic'); };
@@ -1313,14 +1321,23 @@ function openAnnotation(s){
   function applyTextColor(color){
     _activeTextColor = color;
     document.getElementById('annTextColorBar').style.background = color;
-    var sel = window.getSelection();
-    if(!sel || sel.isCollapsed){ AW.toast('Select text first','err'); return; }
-    document.execCommand('foreColor', false, color);
     textColorPop.classList.remove('show');
+    // Restore selection (may have been lost when dropdown opened)
+    if(savedRange){
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+    var sel2 = window.getSelection();
+    if(!sel2 || sel2.isCollapsed){ AW.toast('Select text first','err'); return; }
+    document.execCommand('foreColor', false, color);
   }
 
   document.getElementById('annTextColorBtn').onclick = function(e){
     e.stopPropagation();
+    // Save current selection before opening dropdown (it persists as savedRange)
+    var sel = window.getSelection();
+    if(sel && sel.rangeCount && sel.toString().trim()) savedRange = sel.getRangeAt(0).cloneRange();
     hlColorPop.classList.remove('show');
     textColorPop.classList.toggle('show');
   };
@@ -1342,6 +1359,13 @@ function openAnnotation(s){
   function applyHighlightColor(color){
     _activeHlColor = color;
     document.getElementById('annHlColorBar').style.background = color==='transparent'?'var(--aw-surface-2)':color;
+    hlColorPop.classList.remove('show');
+    // Restore selection that was saved when the dropdown opened
+    if(savedRange){
+      var sel0 = window.getSelection();
+      sel0.removeAllRanges();
+      sel0.addRange(savedRange);
+    }
     var sel = window.getSelection();
     if(!sel || sel.isCollapsed){ AW.toast('Select text first','err'); return; }
     if(color === 'transparent'){
@@ -1372,6 +1396,9 @@ function openAnnotation(s){
 
   document.getElementById('annHlColorBtn').onclick = function(e){
     e.stopPropagation();
+    // Save current selection before dropdown steals focus
+    var sel = window.getSelection();
+    if(sel && sel.rangeCount && sel.toString().trim()) savedRange = sel.getRangeAt(0).cloneRange();
     textColorPop.classList.remove('show');
     hlColorPop.classList.toggle('show');
   };
@@ -2801,7 +2828,41 @@ function showSettings(){
     return '<tr><td>'+AW.esc(c.className)+'</td><td><b>'+AW.esc(c.classId)+'</b></td><td>'+AW.esc(c.year||'')+'</td><td>'+(c.semester?'HK'+AW.esc(c.semester):'')+'</td>'+
       '<td><button class="aw-btn aw-btn-ghost" style="padding:4px 10px;font-size:.75rem;color:var(--aw-danger)" onclick="archiveClass(\''+AW.esc(c.classId)+'\',\''+AW.esc(c.className)+'\')">Archive</button></td></tr>';
   }).join('');
-  content.innerHTML='<div class="aw-card" style="padding:24px;max-width:600px;margin-bottom:16px">'+
+
+  var gKey = AW.geminiKey.get();
+  var gKeyStatus = gKey
+    ? '<span style="color:var(--aw-writing);font-weight:700;font-size:.82rem">✓ Key đã lưu</span>'
+    : '<span style="color:var(--aw-danger);font-size:.82rem">Chưa có key — tính năng AI sẽ không hoạt động</span>';
+
+  content.innerHTML=
+    /* ── Gemini API Key ── */
+    '<div class="aw-card" style="padding:24px;max-width:600px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<h3 style="margin:0">Gemini API Key</h3>'+
+        '<div id="tkStatus">'+gKeyStatus+'</div>'+
+      '</div>'+
+      '<p style="color:var(--aw-ink-2);font-size:.88rem;margin:0 0 12px">'+
+        'Dùng cho: sinh câu Translation, AI grade (write.html), Ask AI. Lưu trên thiết bị này, không gửi lên server.'+
+      '</p>'+
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'+
+        '<div class="aw-pass-wrap" style="flex:1;margin:0">'+
+          '<input class="aw-input" id="tkIn" type="password" autocomplete="off" '+
+            'placeholder="'+(gKey?'•••••••• (đã lưu)':'AIza…')+'" style="padding-right:40px">'+
+          '<button id="tkShowHide" type="button" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--aw-ink-3);font-size:.85rem;padding:2px 4px" title="Show/hide">👁</button>'+
+        '</div>'+
+        '<button class="aw-btn aw-btn-primary" id="tkSave" style="padding:9px 18px">Save</button>'+
+        (gKey?'<button class="aw-btn aw-btn-ghost" id="tkClear" style="padding:9px 14px">Remove</button>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+        '<button class="aw-btn aw-btn-ghost" id="tkTest" style="padding:7px 14px;font-size:.82rem">🔍 Test key</button>'+
+        '<span id="tkTestResult" style="font-size:.82rem"></span>'+
+      '</div>'+
+      '<p style="margin:10px 0 0;font-size:.78rem;color:var(--aw-ink-3)">'+
+        '→ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--aw-primary);font-weight:600">Lấy key miễn phí tại Google AI Studio</a>'+
+      '</p>'+
+    '</div>'+
+    /* ── Account ── */
+    '<div class="aw-card" style="padding:24px;max-width:600px;margin-bottom:16px">'+
     '<h3 style="margin:0 0 6px">Account</h3>'+
     '<p style="color:var(--aw-ink-2);font-size:.9rem">Name: <b>'+AW.esc(sess.name||'')+'</b><br>Email: <b>'+AW.esc(sess.email||'')+'</b></p>'+
     '</div>'+
@@ -2837,6 +2898,68 @@ function showSettings(){
       '<button class="aw-btn" id="resetDataBtn" style="background:#B42318;color:#fff;padding:10px 20px;font-weight:700">🗑 Reset toàn bộ dữ liệu...</button>'+
     '</div>';
 
+  /* ── Gemini key wiring ── */
+  var tkIn = document.getElementById('tkIn');
+
+  // Show/hide toggle
+  document.getElementById('tkShowHide').onclick = function(){
+    tkIn.type = tkIn.type==='password' ? 'text' : 'password';
+    this.textContent = tkIn.type==='password' ? '👁' : '🙈';
+  };
+
+  // Enter to save
+  tkIn.onkeydown = function(e){ if(e.key==='Enter') document.getElementById('tkSave').click(); };
+
+  // Validate format: Gemini keys start with "AIza"
+  tkIn.oninput = function(){
+    var v = tkIn.value.trim();
+    var res = document.getElementById('tkTestResult');
+    if(!v){ res.textContent=''; return; }
+    if(!v.startsWith('AIza') || v.length < 20){
+      res.innerHTML='<span style="color:var(--aw-danger)">⚠ Định dạng key Gemini phải bắt đầu bằng "AIza"</span>';
+    } else {
+      res.innerHTML='<span style="color:var(--aw-ink-3)">Bấm Save hoặc Test để xác nhận</span>';
+    }
+  };
+
+  // Save
+  document.getElementById('tkSave').onclick = function(){
+    var k = tkIn.value.trim();
+    if(!k){ AW.toast('Nhập key trước.','warn'); return; }
+    if(!k.startsWith('AIza')){ AW.toast('Key không đúng định dạng (phải bắt đầu bằng AIza).','err'); return; }
+    AW.geminiKey.set(k);
+    AW.toast('Key đã lưu ✓','ok');
+    showSettings();
+  };
+
+  // Remove
+  var tkClear = document.getElementById('tkClear');
+  if(tkClear) tkClear.onclick = function(){
+    if(!confirm('Xoá Gemini key? Các tính năng AI sẽ ngưng hoạt động.')) return;
+    AW.geminiKey.set('');
+    AW.toast('Key đã xoá.','ok');
+    showSettings();
+  };
+
+  // Test key — call Gemini models.list (cheap, no token cost)
+  document.getElementById('tkTest').onclick = function(){
+    var k = tkIn.value.trim() || AW.geminiKey.get();
+    if(!k){ AW.toast('Nhập hoặc đã lưu key trước.','warn'); return; }
+    var res = document.getElementById('tkTestResult');
+    res.innerHTML='<span style="color:var(--aw-ink-3)">⏳ Đang kiểm tra…</span>';
+    fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(k)+'&pageSize=1')
+      .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, data:d}; }); })
+      .then(function(r){
+        if(r.ok && r.data.models){
+          res.innerHTML='<span style="color:var(--aw-writing);font-weight:700">✓ Key hợp lệ — kết nối OK</span>';
+        } else {
+          var msg = (r.data.error&&r.data.error.message)||'Key không hợp lệ';
+          res.innerHTML='<span style="color:var(--aw-danger)">✗ '+AW.esc(msg)+'</span>';
+        }
+      }).catch(function(){ res.innerHTML='<span style="color:var(--aw-danger)">✗ Lỗi kết nối</span>'; });
+  };
+
+  /* ── Password change ── */
   document.getElementById('tpwBtn').onclick=function(){
     var o=document.getElementById('tpwOld').value, n=document.getElementById('tpwNew').value, n2=document.getElementById('tpwNew2').value;
     if(!o||!n){AW.toast('Please fill all fields.','err');return;}
