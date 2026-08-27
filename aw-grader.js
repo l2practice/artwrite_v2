@@ -11,6 +11,36 @@
 (function (AW) {
   'use strict';
 
+  /*── REQ 1: Single-paragraph penalty ────────────────────────────
+     If the essay is one unbroken block, TR and CC are hard-capped at 5.
+     Runs BEFORE normaliseScores so the overall recalculates from the
+     already-capped components.                                        */
+  function countParagraphs(text) {
+    if (!text) return 0;
+    var t = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+    // Try blank-line split first; fall back to single-newline
+    var chunks = t.split(/\n{2,}/);
+    if (chunks.length === 1) chunks = t.split(/\n/);
+    return chunks.filter(function(c){ return c.trim().length > 5; }).length;
+  }
+
+  function applySingleParaPenalty(essayText, result) {
+    if (countParagraphs(essayText) >= 2) return result;
+    if (!result.scores) return result;
+    var CAP = 5, changed = false;
+    if (result.scores.TR > CAP) { result.scores.TR = CAP; changed = true; }
+    if (result.scores.CC > CAP) { result.scores.CC = CAP; changed = true; }
+    if (changed) {
+      var banner = '\n\n⚠ [Lỗi cấu trúc — Single Paragraph]\n' +
+        'Bài viết chỉ có MỘT đoạn văn duy nhất. IELTS yêu cầu ít nhất 4 đoạn rõ ràng ' +
+        '(mở bài, thân bài 1, thân bài 2, kết bài). ' +
+        'Task Achievement và Coherence & Cohesion bị giới hạn tối đa Band 5.0.';
+      result.overall_feedback_vi = banner + (result.overall_feedback_vi ? '\n\n' + result.overall_feedback_vi : '');
+      result._singleParaPenalty = true;
+    }
+    return result;
+  }
+
   function normaliseScores(r){
     if(r.scores){
       // Round each component to whole number (IELTS: only overall can be X.5).
@@ -152,29 +182,10 @@
     for (var mi = 0; mi < GEMINI_MODELS.length; mi++) {
       var modelName = GEMINI_MODELS[mi];
 
-    // Build Gemini content parts — add chart image if available (Task 1)
-    function buildContentParts(promptText, chartImageUrl) {
-      var parts = [{ text: promptText }];
-      if (chartImageUrl && chartImageUrl.trim()) {
-        if (chartImageUrl.startsWith('data:')) {
-          // Data URL — split into mimeType and base64
-          var m = chartImageUrl.match(/^data:([^;]+);base64,(.+)$/);
-          if (m) {
-            parts.unshift({ inline_data: { mime_type: m[1], data: m[2] } });
-            parts.unshift({ text: 'The student has provided the following chart/diagram for Task 1. Grade their description against this chart.\n\n' });
-          }
-        } else {
-          // Remote URL (Drive thumbnail) — use image_url part if supported, else inject as text note
-          parts.unshift({ text: 'Chart/diagram URL for this Task 1 (student was looking at this while writing): ' + chartImageUrl + '\n\n' });
-        }
-      }
-      return parts;
-    }
-
       var resp = await fetch(GEMINI_BASE + modelName + ':generateContent?key=' + geminiKey, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
-          contents:[{parts: buildContentParts(prompt, payload.chartImageUrl)}],
+          contents:[{parts:[{text:prompt}]}],
           generationConfig: buildGenerationConfig(modelName)
         })
       });
@@ -214,14 +225,26 @@
     // -- Groq fallback ------------------------------------------------
     if (!geminiOk) {
       var storedGroqKey = (window.AW && AW.groqKey) ? AW.groqKey.get() : '';
-      if (storedGroqKey) {
-        // Silent fallback — already have a key
-        return gradeWithGroq(storedGroqKey, prompt);
+      var groqKeyToUse  = storedGroqKey;
+      if (!groqKeyToUse) {
+        // No key stored → ask student, then grade with Groq, then retry Gemini
+        return requestGroqKey(lastGeminiErr).then(async function(key) {
+          try {
+            return await gradeWithGroq(key, prompt);
+          } catch(groqErr) {
+            // Groq also failed → retry Gemini one more time
+            return retryGeminiAfterGroqFail(geminiKey, prompt, groqErr);
+          }
+        });
       }
-      // No key stored → show popup, then grade
-      return requestGroqKey(lastGeminiErr).then(function(key) {
-        return gradeWithGroq(key, prompt);
-      });
+      // Silent Groq fallback — already have a key
+      try {
+        return await gradeWithGroq(groqKeyToUse, prompt);
+      } catch(groqErr) {
+        var ge = (groqErr && groqErr.message) || '';
+        // If Groq quota → retry Gemini (different error class than Groq model fail)
+        return retryGeminiAfterGroqFail(geminiKey, prompt, groqErr);
+      }
     }
 
     var raw = (((lastData.candidates||[])[0]||{}).content||{}).parts;
@@ -243,10 +266,58 @@
     if (ei === -1) throw new Error('Lỗi định dạng: JSON từ AI bị không hoàn chỉnh. Vui lòng thử lại.');
     // Fix 3: wrap JSON.parse in try-catch to show friendly error instead of crashing
     try {
-      return normaliseScores(JSON.parse(clean.substring(si, ei+1)));
+      var _r = JSON.parse(clean.substring(si, ei+1));
+      _r = applySingleParaPenalty(text, _r);
+      return normaliseScores(_r);
     } catch(parseErr) {
       throw new Error('Lỗi đọc kết quả từ AI (JSON sai cú pháp). Vui lòng thử lại.');
     }
+  }
+
+  /*-- retryGeminiAfterGroqFail: when Groq also fails, try Gemini once more.
+       If Gemini still fails, throw "AI đang ngẽn" to surface a clear message. */
+  async function retryGeminiAfterGroqFail(geminiKey, prompt, groqErr) {
+    if (window.AW && AW.toast)
+      AW.toast('⏳ Groq cũng gặp sự cố — đang thử lại Gemini lần cuối…', 'err', 3500);
+    try {
+      var retryModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3.5-flash'];
+      for (var ri = 0; ri < retryModels.length; ri++) {
+        var rResp = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/' +
+          retryModels[ri] + ':generateContent?key=' + geminiKey,
+          { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+              contents:[{parts:[{text:prompt}]}],
+              generationConfig:{ temperature:0.1, topK:1, topP:0.1,
+                                 candidateCount:1, maxOutputTokens:8000 }
+            })
+          }
+        );
+        if (rResp.ok) {
+          var rData = await rResp.json();
+          var rRaw  = (((rData.candidates||[])[0]||{}).content||{}).parts;
+          rRaw = rRaw && rRaw[0] ? rRaw[0].text : '';
+          if (!rRaw) continue;
+          var rClean = rRaw.replace(/```json\s*/gi,'').replace(/```\s*/g,'').trim();
+          var rsi = rClean.indexOf('{'), rei = -1, rdepth = 0;
+          if (rsi !== -1) {
+            for (var rci = rsi; rci < rClean.length; rci++) {
+              if (rClean[rci]==='{') rdepth++;
+              else if (rClean[rci]==='}') { rdepth--; if (rdepth===0) { rei=rci; break; } }
+            }
+          }
+          if (rei !== -1) {
+            var _rr = JSON.parse(rClean.substring(rsi, rei+1));
+            _rr = applySingleParaPenalty(prompt.split('STUDENT')[1] || '', _rr);
+            return normaliseScores(_rr);
+          }
+        }
+      }
+    } catch(finalErr) { /* fall through to final error below */ }
+    // Both Gemini and Groq failed completely
+    throw new Error('AI đang ngẽn: cả Gemini và Groq đều không phản hồi. ' +
+      'Đây là sự cố tạm thời của dịch vụ AI — không phải lỗi ứng dụng. ' +
+      'Vui lòng đợi 2–3 phút rồi bấm lại. Bài viết của bạn vẫn an toàn.');
   }
 
   // requestGroqKey: shows popup asking student to enter their Groq key.
@@ -338,8 +409,12 @@
   /*-- gradeWithGroq: call Groq API with same prompt, return normalised result --*/
   async function gradeWithGroq(groqKey, prompt) {
     if (!groqKey) throw new Error('Không có Groq API key.');
-    // Model fallback: gpt-oss-120b (primary) → qwen3.6-27b (fallback)
-    var GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b'];
+    // Current stable Groq models (Aug 2026) — ordered by quality/speed
+    var GROQ_MODELS = [
+      'openai/gpt-oss-120b', // primary — best quality
+      'qwen/qwen3.6-27b',    // fallback 1 — balanced
+      'openai/gpt-oss-20b',  // fallback 2 — fast, cheap
+    ];
     var lastErr = '';
     for (var gmi = 0; gmi < GROQ_MODELS.length; gmi++) {
       var groqModel = GROQ_MODELS[gmi];
@@ -368,7 +443,9 @@
         }
         if (gei === -1) throw new Error('Lỗi định dạng: JSON từ Groq bị không hoàn chỉnh. Vui lòng thử lại.');
         try {
-          return normaliseScores(JSON.parse(groqClean.substring(gsi, gei+1)));
+          var _gr = JSON.parse(groqClean.substring(gsi, gei+1));
+          _gr = applySingleParaPenalty(prompt.split('STUDENT')[1] || '', _gr); // best-effort text ref
+          return normaliseScores(_gr);
         } catch(parseErr) {
           throw new Error('Lỗi đọc kết quả từ Groq (JSON sai cú pháp). Vui lòng thử lại.');
         }
@@ -376,13 +453,14 @@
       var groqErr = await groqResp.json().catch(function(){return{};});
       lastErr = (groqErr.error && groqErr.error.message) || String(groqResp.status);
       var isModelErr = groqResp.status===404 || lastErr.indexOf('decommission')!==-1 ||
-                       lastErr.indexOf('deprecated')!==-1 || lastErr.indexOf('not found')!==-1;
+                       lastErr.indexOf('deprecated')!==-1 || lastErr.indexOf('not found')!==-1 ||
+                       lastErr.indexOf('model_not_found')!==-1;
       if (groqResp.status===401 || lastErr.indexOf('invalid')!==-1 || lastErr.indexOf('auth')!==-1)
         throw new Error('Groq key không hợp lệ. Kiểm tra lại và thử nhập key khác.');
       if (groqResp.status===429)
-        throw new Error('Groq cũng đã hết lượt miễn phí hôm nay. Vui lòng thử lại sau.');
+        throw new Error('groq:quota:' + lastErr); // signal for Gemini retry
       if (!isModelErr) throw new Error('Groq error: ' + lastErr);
-      // model deprecated → try next
+      // deprecated/not-found model → try next silently
     }
     throw new Error('Groq error: ' + lastErr);
   }

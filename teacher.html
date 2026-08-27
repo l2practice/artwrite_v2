@@ -530,6 +530,16 @@
         <label class="aw-label">Duration (min)</label>
         <input class="aw-input" id="aDur" type="number" value="40" min="5">
       </div>
+      <div class="aw-field" style="flex:1" id="maxSubField">
+        <label class="aw-label">Max Submissions</label>
+        <select class="aw-select" id="aMaxSub">
+          <option value="">Default (3)</option>
+          <option value="1">1 — exam / controlled</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+        <p style="margin:3px 0 0;font-size:.73rem;color:var(--aw-ink-3)">Chọn 1 để khoá sau khi nộp lần đầu.</p>
+      </div>
       <div class="aw-field" style="flex:1" id="deadField">
         <label class="aw-label">Deadline</label>
         <div style="display:flex;gap:6px">
@@ -554,6 +564,17 @@
 if (window.AW && !AW.renderTodaysWord) { AW.renderTodaysWord = function(){}; }
 if (window.AW && !AW.bumpLoginCount) { AW.bumpLoginCount = function(){}; }
 if (window.AW && !AW.groqKey) { AW.groqKey = { get:function(){return localStorage.getItem('aw_groq_key')||'';}, set:function(k){localStorage.setItem('aw_groq_key',k||'');} }; }
+
+/* Gemini key format — permissive: Google may issue AIza…, AQ…, or other prefixes.
+   Real validity is checked by the Test key button (calls Google API). */
+function isGeminiKeyFormat(k) {
+  k = (k || '').trim();
+  // Only reject empty / too short / whitespace in the middle
+  if (k.length < 20) return false;
+  if (/\s/.test(k)) return false;
+  return true;
+}
+
 </script>
 <script>
 if (typeof AW === 'undefined') {
@@ -710,8 +731,8 @@ function showOverview(){
     var d=(res&&res.data)||{activeStudents:0,totalAssignments:0,hwAssignments:0,icAssignments:0};
     content.innerHTML=
       '<div class="aw-kpi-row">' +
-        kpi('Sinh viên trong lớp', d.activeStudents) +
-        kpi('Tổng bài đã giao', d.totalAssignments) +
+        kpi('Total Students', d.activeStudents) +
+        kpi('Total Assignments', d.totalAssignments) +
         kpi('Homework', d.hwAssignments) +
         kpi('In-class Practice', d.icAssignments) +
       '</div>' +
@@ -757,6 +778,7 @@ function loadRoster(){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--aw-border-2);font-size:.88rem">'+
         '<span><b>'+AW.esc(s.studentId)+'</b> · '+AW.esc(s.name||'')+'</span>'+
         '<span style="display:flex;gap:8px;align-items:center"><span style="color:var(--aw-ink-3)">'+AW.esc(s.email||'')+'</span>'+
+        '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem" onclick="openEditStudent(\''+AW.esc(s.studentId)+'\')">Edit</button>'+
         '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem;color:var(--aw-danger)" onclick="archiveStudent(\''+AW.esc(s.studentId)+'\',\''+AW.esc(s.name||'')+'\')">Archive</button></span></div>';
     }).join('');
   });
@@ -928,8 +950,25 @@ function showLive(){
       }).join('');
 
     content.innerHTML=
+      // ── REQ 5: Session control bar (startTime + deadline + countdown) ──
+      '<div id="awSessionBar" style="display:flex;align-items:center;gap:14px;background:var(--aw-surface);border:1px solid var(--aw-border-2);border-radius:12px;padding:10px 16px;margin-bottom:14px;flex-wrap:wrap">'+
+        '<div style="display:flex;flex-direction:column;gap:3px">'+
+          '<span style="font-size:.76rem;font-weight:600;color:var(--aw-ink-2)">Bắt đầu: <b id="awStartDisplay" style="color:var(--aw-ink)">Chưa bắt đầu</b></span>'+
+          '<button class="aw-btn aw-btn-ghost" id="awStartBtn" style="padding:3px 10px;font-size:.75rem;width:fit-content">▶ Mark Start</button>'+
+        '</div>'+
+        '<div style="width:1px;height:38px;background:var(--aw-border-2)"></div>'+
+        '<div style="display:flex;flex-direction:column;gap:3px">'+
+          '<label style="font-size:.76rem;font-weight:600;color:var(--aw-ink-2)">Deadline</label>'+
+          '<input type="datetime-local" id="awDeadlineInput" class="aw-input" style="padding:4px 9px;font-size:.8rem;width:188px">'+
+        '</div>'+
+        '<div style="margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--aw-surface-2);border-radius:10px;padding:7px 14px">'+
+          '<div style="text-align:center">'+
+            '<div id="awCdVal" style="font-family:var(--aw-font-display);font-size:1.5rem;font-weight:800;color:var(--aw-primary);min-width:80px;text-align:center;transition:color .3s">--:--</div>'+
+            '<div id="awCdLbl" style="font-size:.7rem;color:var(--aw-ink-3)">Còn lại</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>'+
       '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">'+
-        // Task filter only (class is already selected in the header bar)
         '<span style="font-size:.78rem;font-weight:600;color:var(--aw-ink-3);white-space:nowrap">Bài:</span>'+
         '<select class="aw-select" id="liveTaskSel">'+taskOpts+'</select>'+
         '<div style="display:flex;gap:2px;background:var(--aw-surface-2);border-radius:8px;padding:3px">'+
@@ -948,6 +987,80 @@ function showLive(){
       '</div>';
 
     document.getElementById('liveTaskSel').onchange=function(){ liveTaskFilter=this.value; renderLive(); };
+
+    // ── REQ 5: Session bar wiring ──────────────────────────────
+    (function(){
+      var _cdInterval = null;
+      var SESSION_KEY = 'aw_live_session_' + curClass();
+
+      function loadState(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'{}'); }catch(e){ return {}; } }
+      function saveState(s){ try{ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }catch(e){} }
+
+      function fmtDT(iso){
+        if(!iso) return 'Chưa bắt đầu';
+        var d=new Date(iso); if(isNaN(d)) return iso;
+        return d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+', '+d.toLocaleDateString('vi-VN');
+      }
+      function fmtRemain(ms){
+        if(ms<=0) return '00:00';
+        var t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+        if(h>0) return h+':'+(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+        return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
+      }
+      function stopCd(){ if(_cdInterval){clearInterval(_cdInterval);_cdInterval=null;} }
+      function startCd(iso){
+        stopCd();
+        var dl=new Date(iso); if(isNaN(dl)) return;
+        var valEl=document.getElementById('awCdVal'), lblEl=document.getElementById('awCdLbl');
+        function tick(){
+          if(!valEl) return stopCd();
+          var remain=dl-Date.now();
+          valEl.textContent=remain>0?fmtRemain(remain):'00:00';
+          if(remain<=0){ valEl.style.color='#D93025'; if(lblEl)lblEl.textContent='⏰ Hết giờ'; stopCd(); }
+          else if(remain<=5*60000){ valEl.style.color='#D93025'; if(lblEl)lblEl.textContent='⚠ Gần hết giờ'; }
+          else if(remain<=10*60000){ valEl.style.color='#E0A32E'; if(lblEl)lblEl.textContent='Còn lại'; }
+          else { valEl.style.color='var(--aw-primary)'; if(lblEl)lblEl.textContent='Còn lại'; }
+        }
+        tick(); _cdInterval=setInterval(tick,1000);
+      }
+
+      // Restore state
+      var state=loadState();
+      if(state.startTime) document.getElementById('awStartDisplay').innerHTML='<b>'+fmtDT(state.startTime)+'</b>';
+      if(state.deadline){
+        // set input value in local datetime-local format
+        var dd=new Date(state.deadline), off=dd.getTimezoneOffset();
+        var loc=new Date(dd.getTime()-off*60000);
+        var inp=document.getElementById('awDeadlineInput');
+        if(inp) inp.value=loc.toISOString().slice(0,16);
+        if(new Date(state.deadline)>Date.now()) startCd(state.deadline);
+        else { var v=document.getElementById('awCdVal'); if(v){v.textContent='00:00';v.style.color='#D93025';} }
+      }
+
+      // Mark start
+      document.getElementById('awStartBtn').onclick=function(){
+        var now=new Date().toISOString();
+        state.startTime=now; saveState(state);
+        document.getElementById('awStartDisplay').innerHTML='<b>'+fmtDT(now)+'</b>';
+        this.textContent='🔄 Reset Start';
+        AW.toast('Đã ghi nhận giờ bắt đầu: '+fmtDT(now),'ok');
+      };
+
+      // Deadline change → start countdown
+      document.getElementById('awDeadlineInput').onchange=function(){
+        var v=this.value;
+        if(!v){ state.deadline=''; saveState(state); stopCd(); document.getElementById('awCdVal').textContent='--:--'; return; }
+        var iso=new Date(v).toISOString(); state.deadline=iso; saveState(state);
+        startCd(iso); AW.toast('Deadline đặt: '+fmtDT(iso),'ok');
+      };
+
+      // Stop countdown when leaving Live tab
+      var _origStop=window.stopLivePoll;
+      window.stopLivePoll=function(){
+        if(_origStop) _origStop();
+        stopCd();
+      };
+    })();
 
     document.getElementById('clearLiveBtn').onclick = function(){
       if (!confirm('Xoá toàn bộ data phiên học trong tab LiveSessions của lớp '+((curClassObj()&&curClassObj().className)||curClass())+'?\n\nThao tác này chỉ xoá data tracking tạm thời — không ảnh hưởng bài làm của sinh viên.')) return;
@@ -1735,12 +1848,12 @@ function showResults(){
       '<button class="aw-tab" data-mode="inclass">In-Class Practice</button>'+
       '<button class="aw-tab" data-mode="homework">Homework</button>'+
       '<button class="aw-tab" data-mode="free">Free Writing</button>'+
-      '<button class="aw-tab" data-mode="translate">🔄 Translation Practice</button>'+
+      '<button class="aw-tab" data-mode="translate">Translation Practice</button>'+
     '</div>'+
     '<div id="resFilterBar" style="display:none"></div>'+
     '<div id="resultsBox">'+
       '<div class="aw-empty" style="padding:60px 20px">'+
-        '<p style="font-size:1rem;color:var(--aw-ink-3)">Chọn một tab bên trên để bắt đầu</p>'+
+        '<p style="font-size:1rem;color:var(--aw-ink-3)">Pick a tab to start</p>'+
       '</div>'+
     '</div>';
 
@@ -1768,24 +1881,24 @@ function showResults(){
     bar.innerHTML =
       '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
         '<select class="aw-select" id="trSetSel" style="flex:1;min-width:240px;max-width:440px">'+
-          '<option value="">⌛ Đang tải danh sách bài dịch…</option>'+
+          '<option value="">⌛ Loading topics…</option>'+
         '</select>'+
-        '<button class="aw-btn aw-btn-primary" id="loadTrResBtn" style="padding:9px 22px;font-weight:700">🔍 Load kết quả</button>'+
+        '<button class="aw-btn aw-btn-primary" id="loadTrResBtn" style="padding:9px 22px;font-weight:700">🔍 Load Results</button>'+
       '</div>';
     AW.api('translate.list', { classId: curClass() }).then(function(res){
       var sets = (res&&res.data)||[];
       var sel = document.getElementById('trSetSel');
       if(!sel) return;
-      sel.innerHTML = '<option value="">📋 Chọn bài dịch…</option>'+
+      sel.innerHTML = '<option value="">📋 Pick a topic…</option>'+
         sets.map(function(s){ return '<option value="'+AW.esc(s.setId)+'">'+AW.esc(s.title)+' ('+s.sessionStatus+')</option>'; }).join('');
     }).catch(function(){
       var sel = document.getElementById('trSetSel');
-      if(sel) sel.innerHTML='<option value="">⚠ Lỗi tải — thử lại</option>';
+      if(sel) sel.innerHTML='<option value="">⚠ Loading Error - Retry</option>';
     });
     var btn = document.getElementById('loadTrResBtn');
     if(btn) btn.onclick = function(){
       var setId = document.getElementById('trSetSel').value;
-      if(!setId){ AW.toast('Chọn một bài dịch trước.','warn'); return; }
+      if(!setId){ AW.toast('Pick a translation practice.','warn'); return; }
       renderTranslateResults(setId);
     };
   }
@@ -1853,12 +1966,12 @@ function showResults(){
       bar.innerHTML =
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
           '<select class="aw-select" id="fDays">'+
-            '<option value="6">6 ngày gần nhất</option>'+
-            '<option value="14">14 ngày gần nhất</option>'+
-            '<option value="0">Tất cả kết quả</option>'+
+            '<option value="6">last 6 days</option>'+
+            '<option value="14">last 14 days</option>'+
+            '<option value="0">All results</option>'+
           '</select>'+
-          '<button class="aw-btn aw-btn-primary" id="loadResBtn" style="padding:9px 22px;font-weight:700">🔍 Load kết quả</button>'+
-          '<span id="resHint" style="font-size:.82rem;color:var(--aw-ink-3)">Free Writing — không cần chọn topic</span>'+
+          '<button class="aw-btn aw-btn-primary" id="loadResBtn" style="padding:9px 22px;font-weight:700">🔍 Load Results</button>'+
+          '<span id="resHint" style="font-size:.82rem;color:var(--aw-ink-3)">Free Writing — No topic to choose</span>'+
         '</div>'+
         '<div id="resSecBar" style="display:none;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px">'+
           secFiltersHtml()+
@@ -1870,14 +1983,14 @@ function showResults(){
       bar.innerHTML =
         '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
           '<select class="aw-select" id="fTopicSel" style="flex:1;min-width:240px;max-width:440px">'+
-            '<option value="">⌛ Đang tải danh sách bài…</option>'+
+            '<option value="">⌛ Loading topics…</option>'+
           '</select>'+
           '<select class="aw-select" id="fDays">'+
-            '<option value="6">6 ngày gần nhất</option>'+
-            '<option value="14">14 ngày gần nhất</option>'+
-            '<option value="0">Tất cả kết quả</option>'+
+            '<option value="6">last 6 days</option>'+
+            '<option value="14">last 14 days</option>'+
+            '<option value="0">All results</option>'+
           '</select>'+
-          '<button class="aw-btn aw-btn-primary" id="loadResBtn" style="padding:9px 22px;font-weight:700">🔍 Load kết quả</button>'+
+          '<button class="aw-btn aw-btn-primary" id="loadResBtn" style="padding:9px 22px;font-weight:700">🔍 Load Results</button>'+
         '</div>'+
         '<div id="resSecBar" style="display:none;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px">'+
           secFiltersHtml()+
@@ -1886,24 +1999,24 @@ function showResults(){
       var sel = document.getElementById('fTopicSel');
       AW.api('write.getAssignments',{class:curClass(), mode:_mode}).then(function(res){
         _assignments = (res&&res.data)||[];
-        sel.innerHTML = '<option value="">📋 Chọn bài tập…</option>'+
+        sel.innerHTML = '<option value="">📋 Pick a topic…</option>'+
           _assignments.map(function(a){
             var badge = a.taskType==='task1' ? ' [T1]' : ' [T2]';
             return '<option value="'+AW.esc(a.topicId)+'">'+AW.esc(a.topic)+badge+'</option>';
           }).join('');
       }).catch(function(){
-        sel.innerHTML='<option value="">⚠ Lỗi tải — thử lại</option>';
+        sel.innerHTML='<option value="">⚠ Loading error — Retry</option>';
       });
       document.getElementById('loadResBtn').onclick = function(){
         var topicId = document.getElementById('fTopicSel').value;
-        if(!topicId){ AW.toast('Vui lòng chọn một bài tập trước.','err'); return; }
+        if(!topicId){ AW.toast('Please a topic first.','err'); return; }
         doLoad(topicId);
       };
     }
     // Show empty state until load
     document.getElementById('resultsBox').innerHTML=
       '<div class="aw-empty" style="padding:60px 20px;color:var(--aw-ink-3)">'+
-        '<p style="font-size:.95rem">'+(isFree?'Chọn khoảng thời gian rồi bấm <b>Load kết quả</b>':'Chọn bài tập rồi bấm <b>Load kết quả</b>')+'</p>'+
+        '<p style="font-size:.95rem">'+(isFree?'Choose the timeline and click <b>Load Results</b>':'Pick a topic and click <b>Load Results</b>')+'</p>'+
       '</div>';
     wireSecFilters();
   }
@@ -1965,25 +2078,25 @@ function showResults(){
 function loadResults(mode, topicId, days){
   var box = document.getElementById('resultsBox');
   var loadBtn = document.getElementById('loadResBtn');
-  if(loadBtn){ loadBtn.disabled=true; loadBtn.textContent='⏳ Đang tải…'; }
-  box.innerHTML='<div class="aw-empty"><span class="aw-spin aw-spin-dark"></span><p style="margin:10px 0 0">Đang tải kết quả…</p></div>';
+  if(loadBtn){ loadBtn.disabled=true; loadBtn.textContent='⏳ Loading…'; }
+  box.innerHTML='<div class="aw-empty"><span class="aw-spin aw-spin-dark"></span><p style="margin:10px 0 0">Loading Results…</p></div>';
 
   var params = { class:curClass(), mode:mode };
   if(topicId) params.topicId = topicId;           // server-side topic filter
   if(days && days > 0) params.days = days;         // server-side date range filter
 
   AW.api('teacher.getResults', params).then(function(res){
-    if(loadBtn){ loadBtn.disabled=false; loadBtn.textContent='🔍 Load kết quả'; }
+    if(loadBtn){ loadBtn.disabled=false; loadBtn.textContent='🔍 Load Results'; }
     resultsData = (res&&res.data)||[];
     var secBar = document.getElementById('resSecBar');
     if(secBar) secBar.style.display='flex';
     if(!resultsData.length){
-      box.innerHTML='<div class="aw-empty">'+AW.icon('results')+'<p>Không có kết quả nào trong khoảng thời gian này.</p></div>';
+      box.innerHTML='<div class="aw-empty">'+AW.icon('results')+'<p>No results found in this timeline.</p></div>';
       return;
     }
     renderResults();
   }).catch(function(e){
-    if(loadBtn){ loadBtn.disabled=false; loadBtn.textContent='🔍 Load kết quả'; }
+    if(loadBtn){ loadBtn.disabled=false; loadBtn.textContent='🔍 Load Results'; }
     box.innerHTML='<div class="aw-empty" style="color:var(--aw-danger)">⚠ Lỗi: '+(e.message||'')+'</div>';
     AW.toast('Lỗi tải kết quả','err');
   });
@@ -2073,7 +2186,7 @@ function renderResults(){
     var impBadge=improve!==null?(parseFloat(improve)>=0?'<span style="color:var(--aw-writing)">▲ +'+improve+'</span>':'<span style="color:var(--aw-danger)">▼ '+improve+'</span>'):'';
     var ts = g.teacherScore || {};
     var attemptsCell='<div style="font-size:.78rem;line-height:1.5;width:200px;padding:2px" class="grp-best">'+
-      '<div style="margin-bottom:6px"><b>'+w.length+'/3</b> attempts · AI best <b style="color:var(--aw-primary)">'+bestVal+'</b></div>'+
+      '<div style="margin-bottom:6px"><b>'+w.length+'/'+(g.maxSubmissions!=null?g.maxSubmissions:3)+'</b> attempts · AI best <b style="color:var(--aw-primary)">'+bestVal+'</b></div>'+
       '<div style="font-weight:600;margin-bottom:3px;color:var(--aw-ink-2)">Teacher scoring:</div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:5px">'+
         '<input class="ms-in" data-f="tr" placeholder="'+(g.taskType==='task1'?'TA':'TR')+'" value="'+AW.esc(ts.tr||'')+'" title="'+(g.taskType==='task1'?'Task Achievement':'Task Response')+'">'+
@@ -2319,12 +2432,12 @@ function showAssignments(){
     '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">'+
       '<button class="aw-btn aw-btn-primary" onclick="newAssignment(\'homework\')">+ New Homework</button>'+
       '<button class="aw-btn aw-btn-ghost" onclick="newAssignment(\'inclass\')">+ New In-class Task</button>'+
-      '<button class="aw-btn aw-btn-ghost" style="color:#8B5CF6;border-color:#8B5CF6" onclick="openTrModal()">🔄 New Translate Set</button>'+
+      '<button class="aw-btn aw-btn-ghost" style="color:#8B5CF6;border-color:#8B5CF6" onclick="openTrModal()">New Translate Set</button>'+
     '</div>'+
     '<div class="aw-tabs" id="assignTabs">'+
       '<button class="aw-tab active" data-amode="inclass">In-class Practice</button>'+
       '<button class="aw-tab" data-amode="homework">Homework</button>'+
-      '<button class="aw-tab" data-amode="translate">🔄 Translation Practice</button>'+
+      '<button class="aw-tab" data-amode="translate">Translation Practice</button>'+
     '</div>'+
     '<div id="assignList"><div class="aw-empty"><span class="aw-spin aw-spin-dark"></span></div></div>';
   AW.els('[data-amode]').forEach(function(t){
@@ -2612,9 +2725,11 @@ window.newAssignment=function(mode){
   AW.els('.aw-ct-chip').forEach(function(c){ c.classList.toggle('active', c.dataset.ct==='Bar chart'); });
   _chartType = 'Bar chart';
   // show/hide mode-specific fields
-  document.getElementById('reqField').style.display  = assignMode==='homework'?'':'none';
-  document.getElementById('durField').style.display  = assignMode==='inclass'?'':'none';
-  document.getElementById('deadField').style.display = assignMode==='homework'?'':'none';
+  document.getElementById('reqField').style.display    = assignMode==='homework'?'':'none';
+  document.getElementById('durField').style.display    = assignMode==='inclass'?'':'none';
+  document.getElementById('deadField').style.display   = assignMode==='homework'?'':'none';
+  document.getElementById('maxSubField').style.display = assignMode==='inclass'?'':'none';
+  if(document.getElementById('aMaxSub')) document.getElementById('aMaxSub').value='';
   document.getElementById('assignModal').classList.add('show');
 };
 
@@ -2649,6 +2764,7 @@ function _aCreateHandler(){
       aiNotes:         aiNotes,
       requiredAttempts:assignMode==='homework'?parseInt(document.getElementById('aReq').value||'3',10):1,
       durationMin:     assignMode==='inclass'?parseInt(document.getElementById('aDur').value||'0',10):'',
+      maxSubmissions:  assignMode==='inclass'?(parseInt(document.getElementById('aMaxSub').value||'',10)||null):null,
       deadline:        (function(){
         if (assignMode !== 'homework') return '';
         var d = document.getElementById('aDead').value;
@@ -2847,7 +2963,7 @@ function showSettings(){
       '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'+
         '<div class="aw-pass-wrap" style="flex:1;margin:0">'+
           '<input class="aw-input" id="tkIn" type="password" autocomplete="off" '+
-            'placeholder="'+(gKey?'•••••••• (đã lưu)':'AIza…')+'" style="padding-right:40px">'+
+            'placeholder="'+(gKey?'•••••••• (đã lưu)':'AIza… hoặc AQ…')+'" style="padding-right:40px">'+
           '<button id="tkShowHide" type="button" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--aw-ink-3);font-size:.85rem;padding:2px 4px" title="Show/hide">👁</button>'+
         '</div>'+
         '<button class="aw-btn aw-btn-primary" id="tkSave" style="padding:9px 18px">Save</button>'+
@@ -2858,7 +2974,7 @@ function showSettings(){
         '<span id="tkTestResult" style="font-size:.82rem"></span>'+
       '</div>'+
       '<p style="margin:10px 0 0;font-size:.78rem;color:var(--aw-ink-3)">'+
-        '→ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--aw-primary);font-weight:600">Lấy key miễn phí tại Google AI Studio</a>'+
+        '→ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--aw-primary);font-weight:600">Get free key at Google AI Studio</a>'+
       '</p>'+
     '</div>'+
     /* ── Account ── */
@@ -2910,13 +3026,13 @@ function showSettings(){
   // Enter to save
   tkIn.onkeydown = function(e){ if(e.key==='Enter') document.getElementById('tkSave').click(); };
 
-  // Validate format: Gemini keys start with "AIza"
+  // Validate format: classic AIza… or newer AI Studio keys (e.g. AQ…)
   tkIn.oninput = function(){
     var v = tkIn.value.trim();
     var res = document.getElementById('tkTestResult');
     if(!v){ res.textContent=''; return; }
-    if(!v.startsWith('AIza') || v.length < 20){
-      res.innerHTML='<span style="color:var(--aw-danger)">⚠ Định dạng key Gemini phải bắt đầu bằng "AIza"</span>';
+    if(!isGeminiKeyFormat(v)){
+      res.innerHTML='<span style="color:var(--aw-danger)">⚠ Key quá ngắn hoặc chứa ký tự không hợp lệ</span>';
     } else {
       res.innerHTML='<span style="color:var(--aw-ink-3)">Bấm Save hoặc Test để xác nhận</span>';
     }
@@ -2926,7 +3042,7 @@ function showSettings(){
   document.getElementById('tkSave').onclick = function(){
     var k = tkIn.value.trim();
     if(!k){ AW.toast('Nhập key trước.','warn'); return; }
-    if(!k.startsWith('AIza')){ AW.toast('Key không đúng định dạng (phải bắt đầu bằng AIza).','err'); return; }
+    if(!isGeminiKeyFormat(k)){ AW.toast('Key không đúng định dạng.','err'); return; }
     AW.geminiKey.set(k);
     AW.toast('Key đã lưu ✓','ok');
     showSettings();
@@ -3375,7 +3491,7 @@ function trGenItems(){
       '<div style="background:#FFF8EC;border:1px solid #F0D9A0;border-radius:var(--aw-r);padding:12px 14px">'+
         '<div style="font-size:.85rem;font-weight:700;color:#7A5000;margin-bottom:8px">🔑 Chưa có Gemini API key</div>'+
         '<div style="display:flex;gap:8px;align-items:center">'+
-          '<input type="password" id="trInlineKey" class="aw-input" placeholder="AIza… (Gemini API key của bạn)" '+
+          '<input type="password" id="trInlineKey" class="aw-input" placeholder="AIza… hoặc AQ… (Gemini API key)" '+
             'style="flex:1;font-size:.85rem" autocomplete="off">'+
           '<button class="aw-btn aw-btn-primary" id="trKeyOk" style="padding:9px 16px;font-size:.85rem;white-space:nowrap">Lưu &amp; Sinh câu</button>'+
         '</div>'+
@@ -3384,6 +3500,7 @@ function trGenItems(){
     document.getElementById('trKeyOk').onclick=function(){
       var k=(document.getElementById('trInlineKey').value||'').trim();
       if(!k){AW.toast('Nhập API key trước.','warn');return;}
+      if(!isGeminiKeyFormat(k)){AW.toast('Key không đúng định dạng.','err');return;}
       AW.geminiKey.set(k);
       AW.toast('Key đã lưu!','ok');
       // Restore gen box and run
@@ -3637,5 +3754,84 @@ startAlerts();
     </div>
   </div>
 </div>
+<!-- ═══ REQ 2: Edit Student Modal ═══ -->
+<div class="aw-modal-bg" id="editStudentModal">
+  <div class="aw-modal" style="max-width:440px">
+    <h3 style="margin:0 0 16px;font-family:var(--aw-font-display)">Edit Student Profile</h3>
+    <div class="aw-field">
+      <label class="aw-label">Full Name</label>
+      <input class="aw-input" id="esName" type="text">
+    </div>
+    <div class="aw-field">
+      <label class="aw-label">Student ID</label>
+      <input class="aw-input" id="esStudentId" type="text" disabled style="background:var(--aw-surface-2);color:var(--aw-ink-3)">
+    </div>
+    <div class="aw-field">
+      <label class="aw-label">Transfer to Class</label>
+      <select class="aw-select" id="esClass">
+        <option value="">— keep current class —</option>
+      </select>
+    </div>
+    <div class="aw-field">
+      <label class="aw-label">Birthday</label>
+      <input class="aw-input" id="esBirthdate" type="date">
+    </div>
+    <div class="aw-field">
+      <label class="aw-label">Phone</label>
+      <input class="aw-input" id="esPhone" type="tel">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="aw-btn aw-btn-ghost" id="esCancel">Cancel</button>
+      <button class="aw-btn aw-btn-primary" id="esSave">Save Changes</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var modal = document.getElementById('editStudentModal');
+  document.getElementById('esCancel').onclick = function(){ modal.classList.remove('show'); };
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.classList.remove('show'); });
+
+  window.openEditStudent = function(studentId){
+    // Populate class dropdown from the teacher's loaded classes
+    var clsOpts = '<option value="">— keep current class —</option>' +
+      myClasses.map(function(c){
+        return '<option value="'+AW.esc(c.classId)+'">'+AW.esc(c.className)+' ('+AW.esc(c.classId)+')</option>';
+      }).join('');
+    document.getElementById('esClass').innerHTML = clsOpts;
+    document.getElementById('esStudentId').value = studentId;
+    document.getElementById('esName').value = '';
+    document.getElementById('esBirthdate').value = '';
+    document.getElementById('esPhone').value = '';
+    document.getElementById('esClass').value = '';
+    modal.classList.add('show');
+    // Fetch current data
+    AW.api('student.getById',{studentId:studentId}).then(function(res){
+      if(!res||!res.success){ AW.toast('Không tải được dữ liệu.','err'); return; }
+      var d = res.data;
+      document.getElementById('esName').value = d.name||'';
+      document.getElementById('esBirthdate').value = (d.birthdate||'').slice(0,10);
+      document.getElementById('esPhone').value = d.phone||'';
+      if(d.class) document.getElementById('esClass').value = d.class;
+    });
+  };
+
+  document.getElementById('esSave').onclick = function(){
+    var studentId = document.getElementById('esStudentId').value.trim();
+    var name = document.getElementById('esName').value.trim();
+    if(!name){ AW.toast('Name is required.','err'); return; }
+    var payload = { studentId:studentId, name:name,
+      birthdate: document.getElementById('esBirthdate').value||undefined,
+      phone: document.getElementById('esPhone').value.trim()||undefined };
+    var cls = document.getElementById('esClass').value;
+    if(cls) payload.class = cls;
+    var btn=this; btn.disabled=true; var orig=btn.textContent; btn.innerHTML='<span class="aw-spin"></span>';
+    AW.api('student.edit',payload).then(function(res){
+      if(res&&res.success){ AW.toast('Profile updated.','ok'); modal.classList.remove('show'); loadRoster(); }
+      else AW.toast((res&&res.error)||'Update failed.','err');
+    }).finally(function(){ btn.disabled=false; btn.textContent=orig; });
+  };
+})();
+</script>
 </body>
 </html>
