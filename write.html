@@ -14,7 +14,7 @@
   @media(max-width:960px){.aw-write-grid{grid-template-columns:1fr}}
   .aw-prompt-box{background:var(--aw-surface-2);border:1px solid var(--aw-border);border-radius:var(--aw-r);padding:18px 20px;margin-bottom:16px}
   .aw-prompt-box h4{margin:0 0 6px;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--aw-primary);font-weight:700}
-  .aw-prompt-text{color:var(--aw-ink);line-height:1.6;font-size:.95rem;white-space:pre-wrap}
+  .aw-prompt-text{color:var(--aw-ink);line-height:1.6;font-size:.95rem;white-space:normal;word-break:break-word}
   .aw-editor-toolbar{display:flex;gap:2px;padding:8px 10px;border:1px solid var(--aw-border);border-bottom:none;border-radius:var(--aw-r) var(--aw-r) 0 0;background:var(--aw-surface-2);flex-wrap:wrap}
   .aw-tb-btn{width:32px;height:32px;border:none;background:none;border-radius:6px;cursor:pointer;color:var(--aw-ink-2);font-weight:700;display:grid;place-items:center;font-size:.9rem}
   .aw-tb-btn:hover{background:var(--aw-primary-lt);color:var(--aw-primary)}
@@ -220,7 +220,7 @@ if (hasRealTopic) {
       if (res.data.prompt && !qp.get('prompt')) {
         PROMPT = res.data.prompt;
         var pt = document.querySelector('.aw-prompt-text');
-        if (pt) pt.innerHTML = AW.esc(AW.stripHtml(PROMPT));
+        if (pt) pt.innerHTML = AW.esc(AW.stripHtml(PROMPT).replace(/\s*\n\s*/g,' ').replace(/[ \t]{2,}/g,' ').trim());
       }
       AI_NOTES = res.data.aiNotes || '';
       // Override MIN_WORDS if teacher specified a custom limit for this task
@@ -258,7 +258,7 @@ content.innerHTML =
           ? '<span class="aw-task1-badge" id="taskTypeBadge">Task 1</span>'
           : '<span class="aw-task2-badge" id="taskTypeBadge">Task 2</span>';
         return '<div class="aw-prompt-box"><h4>IELTS Writing Prompt'+ttBadge+'</h4>' +
-          '<div class="aw-prompt-text">'+AW.stripHtml(PROMPT)+'</div></div>';
+          '<div class="aw-prompt-text">'+AW.esc(AW.stripHtml(PROMPT).replace(/\s*\n\s*/g,' ').replace(/[ \t]{2,}/g,' ').trim())+'</div></div>';
       })() +
       '<div class="aw-editor-toolbar">' +
         '<button class="aw-tb-btn" data-cmd="bold"><b>B</b></button>' +
@@ -432,25 +432,18 @@ if (!RETRY) {
   }
 }
 window.pauseWriting = function(){
-  stopTimer();
-  _saveElapsed();
   try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
-  var elapsed = (function(){ var m=Math.floor(elapsedSeconds/60),s=elapsedSeconds%60; return m+'m'+(s<10?'0':'')+s+'s'; })();
-  AW.toast('Draft saved ('+(DURATION_MIN?elapsed+' elapsed':'')+') — bạn có thể quay lại bất cứ lúc nào.','ok',3500);
-  if(DURATION_MIN) startTimer(); // resume ticking after toast
+  AW.toast('Draft saved. You can leave and come back anytime.','ok',3000);
 };
-// clear draft AND elapsed after successful submission
+// clear draft after successful submission
 window.clearDraft = function(){
   try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
-  try { localStorage.removeItem(ELAPSED_KEY); } catch(e){}
 };
 setTimeout(function(){ var pb=document.getElementById('pauseBtn'); if(pb) pb.onclick=pauseWriting; }, 0);
 
 /*──────── retry: start FRESH with an empty editor ────────*/
 if (RETRY) {
   localStorage.removeItem(DRAFT_KEY);
-  try { localStorage.removeItem(ELAPSED_KEY); } catch(e){}
-  elapsedSeconds = 0;
   editor.innerText = '';
   wc.textContent = '0 words';
   AW.api('write.getAttemptCount', { studentId: sess.studentId, topicId: TOPIC_ID, mode: MODE }).then(function(res){
@@ -479,72 +472,36 @@ function lockEditorFull(){
   }
 }
 
-/*──────── REQ 4: Persistent elapsed timer ────────────────────────
-  Counts UP (elapsed). On resume the saved elapsed is restored from
-  localStorage so the countdown display is always accurate.
-  Saves elapsed on Pause, beforeunload, and visibilitychange.        */
-var ELAPSED_KEY = 'aw_elapsed_' + MODE + '_' + TOPIC_ID;
-var elapsedSeconds = 0;
-var _timerTick = null;
-var _timeUpFired = false;
-var _timerEl = DURATION_MIN ? document.getElementById('timer') : null;
-
-function _fmtRemain(sec){
-  var m=Math.floor(sec/60), s=sec%60; return '⏱ '+m+':'+(s<10?'0':'')+s;
-}
-function _updateTimerDisplay(){
-  if(!_timerEl || !DURATION_MIN) return;
-  var remain = Math.max(0, DURATION_MIN*60 - elapsedSeconds);
-  _timerEl.textContent = _fmtRemain(remain);
-  if(remain<=60)       { _timerEl.style.color='#B42318'; _timerEl.style.fontWeight='900'; }
-  else if(remain<=300) { _timerEl.style.color='#D93025'; _timerEl.style.fontWeight=''; }
-  else                 { _timerEl.style.color=''; _timerEl.style.fontWeight=''; }
-}
-function stopTimer(){
-  if(_timerTick){ clearInterval(_timerTick); _timerTick=null; }
-}
-function _saveElapsed(){
-  if(!DURATION_MIN) return;
-  try { localStorage.setItem(ELAPSED_KEY, String(elapsedSeconds)); } catch(e){}
-}
-function startTimer(){
-  if(_timerTick || !DURATION_MIN) return;
-  // Restore elapsed from previous session
-  if(!RETRY){
-    var stored = localStorage.getItem(ELAPSED_KEY);
-    if(stored){ var n=parseInt(stored,10); if(!isNaN(n)&&n>0) elapsedSeconds=n; }
-  }
-  _updateTimerDisplay();
-  _timerTick = setInterval(function(){
-    elapsedSeconds++;
-    _updateTimerDisplay();
-    var remain = DURATION_MIN*60 - elapsedSeconds;
-    if(remain===600) AW.toast('⏰ Còn 10 phút — hãy hoàn thiện bài nhé!','err',4000);
-    if(remain===300) AW.toast('⚠️ Còn 5 phút — chuẩn bị kết bài!','err',4000);
-    if(remain===60)  AW.toast('🚨 Còn 1 phút — bài sẽ tự động nộp!','err',5000);
-    if(remain<=0 && !_timeUpFired){
-      _timeUpFired=true;
-      stopTimer(); _saveElapsed();
-      AW.toast('Hết giờ! Bài của bạn đang được nộp tự động…','err',5000);
-      autoSubmitOnTimeout();
+/*──────── timer ────────*/
+if (DURATION_MIN) {
+  var remain = DURATION_MIN*60;
+  var tEl = document.getElementById('timer');
+  var timeUp = false;
+  var tick = setInterval(function(){
+    remain--;
+    if (remain<=0){
+      clearInterval(tick);
+      if (tEl) tEl.textContent = '0:00';
+      if (!timeUp){
+        timeUp = true;
+        // time's up → auto-submit whatever is written, then lock the editor
+        AW.toast('Hết giờ! Bài của bạn đang được nộp tự động…','err',5000);
+        autoSubmitOnTimeout();
+      }
+      return;
     }
+    var m=Math.floor(remain/60), s=remain%60;
+    if (tEl){
+      tEl.textContent = '⏱ '+m+':'+(s<10?'0':'')+s;
+      if (remain<=60)  { tEl.style.color='#B42318'; tEl.style.fontWeight='900'; }
+      else if (remain<=300) tEl.style.color = '#D93025';   // last 5 min: red
+    }
+    // Milestone toasts
+    if (remain===600) AW.toast('⏰ Còn 10 phút — hãy hoàn thiện bài nhé!','err',4000);
+    if (remain===300) AW.toast('⚠️ Còn 5 phút — chuẩn bị kết bài!','err',4000);
+    if (remain===60)  AW.toast('🚨 Còn 1 phút — bài sẽ tự động nộp!','err',5000);
   },1000);
 }
-// Start timer on first keystroke (avoid counting read-time)
-if(DURATION_MIN){
-  var _timerStarted=false;
-  var _startOnInput=function(){
-    if(_timerStarted) return; _timerStarted=true;
-    editor.removeEventListener('input',_startOnInput);
-    startTimer();
-  };
-  editor.addEventListener('input',_startOnInput);
-  // If draft was restored (student already started), start immediately
-  if(!RETRY && localStorage.getItem(DRAFT_KEY)) startTimer();
-}
-// Flush elapsed on navigation/tab switch
-window.addEventListener('beforeunload',_saveElapsed);
-window.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') _saveElapsed(); });
 
 /* Fired once when the countdown reaches zero.
    Strategy: programmatically trigger gradeBtnHandler (same as student pressing
@@ -569,7 +526,7 @@ function autoSubmitOnTimeout(){
     AW.api('write.saveResult', {
       studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
       taskType:TASK_TYPE, startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-      duration:(DURATION_MIN ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
+      duration:Math.round((Date.now()-startTime)/1000),
       tr:'', cc:'', lr:'', gra:'', aiGrading:'', teacherGrading:'',
       essay:'(Không có nội dung)', class:(sess.class||''), feedback:''
     }).then(function(saveRes){
@@ -737,7 +694,7 @@ function submitWithoutAI(btn, text){
   AW.api('write.saveResult', {
     studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
     startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-    duration:(DURATION_MIN ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
+    duration:Math.round((Date.now()-startTime)/1000),
     tr:'', cc:'', lr:'', gra:'', aiGrading:'', teacherGrading:'',
     essay:text, class:(sess.class||''), feedback:''
   }).then(function(res){
@@ -959,7 +916,7 @@ function gradeBtnHandler(){
       return AW.api('write.saveResult', {
         studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
         startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-        duration:(DURATION_MIN ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
+        duration:Math.round((Date.now()-startTime)/1000),
         tr:result.scores.TR, cc:result.scores.CC, lr:result.scores.LR, gra:result.scores.GRA,
         aiGrading:result.overall, teacherGrading:'', essay:lastPlainEssay, class:(sess.class||''),
         feedback: JSON.stringify(result)

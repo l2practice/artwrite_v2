@@ -73,6 +73,10 @@
   .aw-rev-modal .rv-block{margin-top:14px;padding-top:14px;border-top:1px solid var(--aw-border-2)}
   .aw-rev-modal .rv-block h4{color:var(--aw-primary);margin:0 0 6px;font-size:.85rem;text-transform:uppercase;letter-spacing:.03em}
   .aw-rev-modal .rv-block p{margin:0 0 6px;line-height:1.55;font-size:.9rem;color:var(--aw-ink-2)}
+  /* Band badge — always a perfect circle, number never clipped */
+  .aw-band-badge{width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#0A6EBD,#0A93BD);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex:0 0 auto;gap:1px}
+  .aw-band-badge .bb-num{font-size:1.35rem;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .aw-band-badge .bb-lbl{font-size:.52rem;font-weight:600;letter-spacing:.08em;opacity:.85}
 </style>
 </head>
 <body>
@@ -472,7 +476,6 @@ function loadAssignments(mode){
           taskBadge+
           '<span class="aw-tag aw-tag-type">'+AW.esc(a.mode)+'</span> '+
           (a.requiredAttempts?'<span class="aw-tag aw-tag-medium">'+a.requiredAttempts+' revisions</span>':'')+
-          (a.maxSubmissions!=null?'<span class="aw-tag" style="background:#FFF3CD;color:#856404;border:1px solid #FFDA6A">Max '+a.maxSubmissions+' lần nộp</span>':'')+
         '</div>'+
         '<p class="aw-lib-desc">'+AW.esc(plain.slice(0,140))+(plain.length>140?'…':'')+'</p>'+
         deadlineHtml+
@@ -487,35 +490,16 @@ function loadAssignments(mode){
           AW.toast('Bài tập này đã quá hạn nộp (deadline: '+AW.fmtDate(a.deadline)+'). Liên hệ giáo viên nếu cần nộp trễ.','err',5000);
           return;
         }
-        // REQ 3: if maxSubmissions set, check count before entering write.html
-        var maxSub = (a.maxSubmissions != null) ? parseInt(a.maxSubmissions, 10) : null;
-        function _doOpen(){
-          var p=new URLSearchParams({
-            mode:    a.mode,
-            topic:   a.topic,
-            prompt:  a.prompt || '',
-            topicId: a.topicId,
-            type:    a.taskType || 'task2'
-          });
-          if(a.durationMin) p.set('duration', a.durationMin);
-          if(a.chartImageId) p.set('chartImageId', a.chartImageId);
-          location.href='write.html?'+p.toString();
-        }
-        if (maxSub != null) {
-          AW.api('write.getAttemptCount',{studentId:sess.studentId, topicId:a.topicId, mode:a.mode}).then(function(res){
-            var count = (res && res.success) ? (res.data.count||0) : 0;
-            if (count >= maxSub) {
-              AW.toast('Bạn đã nộp đủ '+maxSub+' lần cho bài này. ❌','err',5000);
-              // Mark card as locked visually
-              c.classList.add('aw-mode-locked');
-              c.style.cursor='not-allowed';
-            } else {
-              _doOpen();
-            }
-          }).catch(function(){ _doOpen(); }); // network fail → let backend enforce
-        } else {
-          _doOpen();
-        }
+        var p=new URLSearchParams({
+          mode:    a.mode,
+          topic:   a.topic,
+          prompt:  a.prompt || '',
+          topicId: a.topicId,
+          type:    a.taskType || 'task2'
+        });
+        if(a.durationMin) p.set('duration', a.durationMin);
+        if(a.chartImageId) p.set('chartImageId', a.chartImageId);
+        location.href='write.html?'+p.toString();
       };
     });
   });
@@ -597,16 +581,14 @@ function renderProgress(){
     // teacher scoring cell — blank hint if not graded
     var teacherCell;
     if(ts && (ts.overall||ts.tr||ts.cc||ts.lr||ts.gra||ts.privateNote)){
-      var _maxS = g.maxSubmissions != null ? g.maxSubmissions : 3;
-      teacherCell='<div style="font-size:.76rem;line-height:1.5;width:210px"><b>'+w.length+'/'+_maxS+'</b> attempts'+
+      teacherCell='<div style="font-size:.76rem;line-height:1.5;width:210px"><b>'+w.length+'/3</b> attempts'+
         '<div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--aw-border-2)">'+
         (ts.overall?'<div style="margin-bottom:2px"><b style="color:var(--aw-primary);font-size:.9rem">Teacher: '+ts.overall+'</b></div>':'')+
         ((ts.tr||ts.cc||ts.lr||ts.gra)?'<div style="color:var(--aw-ink-2)">TR '+(ts.tr||'—')+' · CC '+(ts.cc||'—')+' · LR '+(ts.lr||'—')+' · GRA '+(ts.gra||'—')+'</div>':'')+
         (ts.privateNote?'<div style="margin-top:5px;padding:6px;background:#EAF6EF;border-radius:6px;color:var(--aw-ink-2);white-space:normal;word-break:break-word"><b>💬 Teacher note:</b><br>'+AW.esc(ts.privateNote)+'</div>':'')+
         '</div></div>';
     } else {
-      var _maxS2 = g.maxSubmissions != null ? g.maxSubmissions : 3;
-      teacherCell='<div style="font-size:.76rem;line-height:1.5;width:200px"><b>'+w.length+'/'+_maxS2+'</b> attempts'+
+      teacherCell='<div style="font-size:.76rem;line-height:1.5;width:200px"><b>'+w.length+'/3</b> attempts'+
         '<div style="margin-top:4px;color:var(--aw-ink-3);font-style:italic">Not graded by teacher yet</div></div>';
     }
     var promptPlain = g.prompt ? (AW.stripHtml?AW.stripHtml(g.prompt):g.prompt.replace(/<[^>]*>/g,' ')) : '';
@@ -659,7 +641,7 @@ function reviewFeedbackRec(r, refIdx){
       : 'This attempt has no stored AI feedback yet. This happens for submissions made before feedback storage was enabled, or if the tab was reset. New submissions show full feedback here.';
     var bodyNoFb='<div id="reviewContent">'+
       '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">'+
-        '<div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#0A6EBD,#0A93BD);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><b style="font-size:1.5rem">'+(r.overall||'—')+'</b><span style="font-size:.5rem">BAND</span></div>'+
+        '<div class="aw-band-badge"><span class="bb-num">'+(r.overall||'—')+'</span><span class="bb-lbl">BAND</span></div>'+
         '<div><b>'+AW.esc(r.topic||'')+'</b><p style="margin:2px 0 0;font-size:.82rem;color:#667">TR '+(r.tr||'—')+' · CC '+(r.cc||'—')+' · LR '+(r.lr||'—')+' · GRA '+(r.gra||'—')+'</p></div>'+
       '</div>'+
       '<div class="rv-block" style="background:#FFF8EC"><p style="margin:0">'+noticeMsg+'</p></div>'+
@@ -732,7 +714,7 @@ function reviewFeedbackRec(r, refIdx){
 
   var body='<div id="reviewContent">'+
     '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">'+
-      '<div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#0A6EBD,#0A93BD);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><b style="font-size:1.5rem">'+(fb.overall||'—')+'</b><span style="font-size:.5rem">BAND</span></div>'+
+      '<div class="aw-band-badge"><span class="bb-num">'+(fb.overall||'—')+'</span><span class="bb-lbl">BAND</span></div>'+
       '<div><b>'+AW.esc(fb.band_description||'')+'</b><p style="margin:2px 0 0;font-size:.82rem;color:#667">'+AW.esc(r.topic||'')+' · Attempt '+(r.attempt||1)+'</p></div>'+
     '</div>'+
     crit('Task Response',s.TR)+crit('Coherence & Cohesion',s.CC)+crit('Lexical Resource',s.LR)+crit('Grammar',s.GRA)+

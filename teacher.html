@@ -229,6 +229,10 @@
   .aw-t1-chart-hover{position:relative;display:inline-block;cursor:pointer;margin-left:4px;font-size:.8rem;vertical-align:middle}
   .aw-t1-chart-pop{display:none;position:absolute;top:22px;left:0;z-index:300;width:340px;max-width:70vw;border-radius:10px;border:2px solid #1A9E5C;box-shadow:0 8px 32px rgba(0,0,0,.25);background:#fff;object-fit:contain}
   .aw-t1-chart-hover:hover .aw-t1-chart-pop{display:block}
+  /* Band badge */
+  .aw-band-badge{width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#0A6EBD,#0A93BD);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex:0 0 auto;gap:1px}
+  .aw-band-badge .bb-num{font-size:1.35rem;font-weight:800;line-height:1;letter-spacing:-.02em}
+  .aw-band-badge .bb-lbl{font-size:.52rem;font-weight:600;letter-spacing:.08em;opacity:.85}
 </style>
 </head>
 <body>
@@ -530,16 +534,6 @@
         <label class="aw-label">Duration (min)</label>
         <input class="aw-input" id="aDur" type="number" value="40" min="5">
       </div>
-      <div class="aw-field" style="flex:1" id="maxSubField">
-        <label class="aw-label">Max Submissions</label>
-        <select class="aw-select" id="aMaxSub">
-          <option value="">Default (3)</option>
-          <option value="1">1 — exam / controlled</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-        </select>
-        <p style="margin:3px 0 0;font-size:.73rem;color:var(--aw-ink-3)">Chọn 1 để khoá sau khi nộp lần đầu.</p>
-      </div>
       <div class="aw-field" style="flex:1" id="deadField">
         <label class="aw-label">Deadline</label>
         <div style="display:flex;gap:6px">
@@ -778,7 +772,6 @@ function loadRoster(){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--aw-border-2);font-size:.88rem">'+
         '<span><b>'+AW.esc(s.studentId)+'</b> · '+AW.esc(s.name||'')+'</span>'+
         '<span style="display:flex;gap:8px;align-items:center"><span style="color:var(--aw-ink-3)">'+AW.esc(s.email||'')+'</span>'+
-        '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem" onclick="openEditStudent(\''+AW.esc(s.studentId)+'\')">Edit</button>'+
         '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem;color:var(--aw-danger)" onclick="archiveStudent(\''+AW.esc(s.studentId)+'\',\''+AW.esc(s.name||'')+'\')">Archive</button></span></div>';
     }).join('');
   });
@@ -950,25 +943,8 @@ function showLive(){
       }).join('');
 
     content.innerHTML=
-      // ── REQ 5: Session control bar (startTime + deadline + countdown) ──
-      '<div id="awSessionBar" style="display:flex;align-items:center;gap:14px;background:var(--aw-surface);border:1px solid var(--aw-border-2);border-radius:12px;padding:10px 16px;margin-bottom:14px;flex-wrap:wrap">'+
-        '<div style="display:flex;flex-direction:column;gap:3px">'+
-          '<span style="font-size:.76rem;font-weight:600;color:var(--aw-ink-2)">Bắt đầu: <b id="awStartDisplay" style="color:var(--aw-ink)">Chưa bắt đầu</b></span>'+
-          '<button class="aw-btn aw-btn-ghost" id="awStartBtn" style="padding:3px 10px;font-size:.75rem;width:fit-content">▶ Mark Start</button>'+
-        '</div>'+
-        '<div style="width:1px;height:38px;background:var(--aw-border-2)"></div>'+
-        '<div style="display:flex;flex-direction:column;gap:3px">'+
-          '<label style="font-size:.76rem;font-weight:600;color:var(--aw-ink-2)">Deadline</label>'+
-          '<input type="datetime-local" id="awDeadlineInput" class="aw-input" style="padding:4px 9px;font-size:.8rem;width:188px">'+
-        '</div>'+
-        '<div style="margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--aw-surface-2);border-radius:10px;padding:7px 14px">'+
-          '<div style="text-align:center">'+
-            '<div id="awCdVal" style="font-family:var(--aw-font-display);font-size:1.5rem;font-weight:800;color:var(--aw-primary);min-width:80px;text-align:center;transition:color .3s">--:--</div>'+
-            '<div id="awCdLbl" style="font-size:.7rem;color:var(--aw-ink-3)">Còn lại</div>'+
-          '</div>'+
-        '</div>'+
-      '</div>'+
       '<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">'+
+        // Task filter only (class is already selected in the header bar)
         '<span style="font-size:.78rem;font-weight:600;color:var(--aw-ink-3);white-space:nowrap">Bài:</span>'+
         '<select class="aw-select" id="liveTaskSel">'+taskOpts+'</select>'+
         '<div style="display:flex;gap:2px;background:var(--aw-surface-2);border-radius:8px;padding:3px">'+
@@ -987,80 +963,6 @@ function showLive(){
       '</div>';
 
     document.getElementById('liveTaskSel').onchange=function(){ liveTaskFilter=this.value; renderLive(); };
-
-    // ── REQ 5: Session bar wiring ──────────────────────────────
-    (function(){
-      var _cdInterval = null;
-      var SESSION_KEY = 'aw_live_session_' + curClass();
-
-      function loadState(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'{}'); }catch(e){ return {}; } }
-      function saveState(s){ try{ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }catch(e){} }
-
-      function fmtDT(iso){
-        if(!iso) return 'Chưa bắt đầu';
-        var d=new Date(iso); if(isNaN(d)) return iso;
-        return d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+', '+d.toLocaleDateString('vi-VN');
-      }
-      function fmtRemain(ms){
-        if(ms<=0) return '00:00';
-        var t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
-        if(h>0) return h+':'+(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-        return (m<10?'0':'')+m+':'+(s<10?'0':'')+s;
-      }
-      function stopCd(){ if(_cdInterval){clearInterval(_cdInterval);_cdInterval=null;} }
-      function startCd(iso){
-        stopCd();
-        var dl=new Date(iso); if(isNaN(dl)) return;
-        var valEl=document.getElementById('awCdVal'), lblEl=document.getElementById('awCdLbl');
-        function tick(){
-          if(!valEl) return stopCd();
-          var remain=dl-Date.now();
-          valEl.textContent=remain>0?fmtRemain(remain):'00:00';
-          if(remain<=0){ valEl.style.color='#D93025'; if(lblEl)lblEl.textContent='⏰ Hết giờ'; stopCd(); }
-          else if(remain<=5*60000){ valEl.style.color='#D93025'; if(lblEl)lblEl.textContent='⚠ Gần hết giờ'; }
-          else if(remain<=10*60000){ valEl.style.color='#E0A32E'; if(lblEl)lblEl.textContent='Còn lại'; }
-          else { valEl.style.color='var(--aw-primary)'; if(lblEl)lblEl.textContent='Còn lại'; }
-        }
-        tick(); _cdInterval=setInterval(tick,1000);
-      }
-
-      // Restore state
-      var state=loadState();
-      if(state.startTime) document.getElementById('awStartDisplay').innerHTML='<b>'+fmtDT(state.startTime)+'</b>';
-      if(state.deadline){
-        // set input value in local datetime-local format
-        var dd=new Date(state.deadline), off=dd.getTimezoneOffset();
-        var loc=new Date(dd.getTime()-off*60000);
-        var inp=document.getElementById('awDeadlineInput');
-        if(inp) inp.value=loc.toISOString().slice(0,16);
-        if(new Date(state.deadline)>Date.now()) startCd(state.deadline);
-        else { var v=document.getElementById('awCdVal'); if(v){v.textContent='00:00';v.style.color='#D93025';} }
-      }
-
-      // Mark start
-      document.getElementById('awStartBtn').onclick=function(){
-        var now=new Date().toISOString();
-        state.startTime=now; saveState(state);
-        document.getElementById('awStartDisplay').innerHTML='<b>'+fmtDT(now)+'</b>';
-        this.textContent='🔄 Reset Start';
-        AW.toast('Đã ghi nhận giờ bắt đầu: '+fmtDT(now),'ok');
-      };
-
-      // Deadline change → start countdown
-      document.getElementById('awDeadlineInput').onchange=function(){
-        var v=this.value;
-        if(!v){ state.deadline=''; saveState(state); stopCd(); document.getElementById('awCdVal').textContent='--:--'; return; }
-        var iso=new Date(v).toISOString(); state.deadline=iso; saveState(state);
-        startCd(iso); AW.toast('Deadline đặt: '+fmtDT(iso),'ok');
-      };
-
-      // Stop countdown when leaving Live tab
-      var _origStop=window.stopLivePoll;
-      window.stopLivePoll=function(){
-        if(_origStop) _origStop();
-        stopCd();
-      };
-    })();
 
     document.getElementById('clearLiveBtn').onclick = function(){
       if (!confirm('Xoá toàn bộ data phiên học trong tab LiveSessions của lớp '+((curClassObj()&&curClassObj().className)||curClass())+'?\n\nThao tác này chỉ xoá data tracking tạm thời — không ảnh hưởng bài làm của sinh viên.')) return;
@@ -2186,7 +2088,7 @@ function renderResults(){
     var impBadge=improve!==null?(parseFloat(improve)>=0?'<span style="color:var(--aw-writing)">▲ +'+improve+'</span>':'<span style="color:var(--aw-danger)">▼ '+improve+'</span>'):'';
     var ts = g.teacherScore || {};
     var attemptsCell='<div style="font-size:.78rem;line-height:1.5;width:200px;padding:2px" class="grp-best">'+
-      '<div style="margin-bottom:6px"><b>'+w.length+'/'+(g.maxSubmissions!=null?g.maxSubmissions:3)+'</b> attempts · AI best <b style="color:var(--aw-primary)">'+bestVal+'</b></div>'+
+      '<div style="margin-bottom:6px"><b>'+w.length+'/3</b> attempts · AI best <b style="color:var(--aw-primary)">'+bestVal+'</b></div>'+
       '<div style="font-weight:600;margin-bottom:3px;color:var(--aw-ink-2)">Teacher scoring:</div>'+
       '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:5px">'+
         '<input class="ms-in" data-f="tr" placeholder="'+(g.taskType==='task1'?'TA':'TR')+'" value="'+AW.esc(ts.tr||'')+'" title="'+(g.taskType==='task1'?'Task Achievement':'Task Response')+'">'+
@@ -2317,7 +2219,7 @@ window.viewEssays=function(gkey, writeIdx){
         '<h4>Attempt '+(i+1)+' — Band '+(x.overall||'—')+'</h4>'+
         (x.timestamp?'<div style="font-size:.76rem;color:var(--aw-ink-3);margin:-4px 0 8px">🗓 '+AW.fmtDate(x.timestamp)+'</div>':'')+
         '<div style="display:flex;align-items:center;gap:14px;margin:8px 0 14px">'+
-          '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#0A6EBD,#0A93BD);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex:0 0 auto"><b style="font-size:1.3rem">'+(x.overall||'—')+'</b><span style="font-size:.5rem">BAND</span></div>'+
+          '<div class="aw-band-badge"><span class="bb-num">'+(x.overall||'—')+'</span><span class="bb-lbl">BAND</span></div>'+
           '<div style="flex:1">'+crit(c1label,x.tr)+crit('Coherence & Cohesion',x.cc)+crit('Lexical Resource',x.lr)+crit('Grammar',x.gra)+'</div>'+
         '</div>'+
         '<div id="detail_'+i+'" style="color:var(--aw-ink-3);font-size:.85rem">'+
@@ -2725,11 +2627,9 @@ window.newAssignment=function(mode){
   AW.els('.aw-ct-chip').forEach(function(c){ c.classList.toggle('active', c.dataset.ct==='Bar chart'); });
   _chartType = 'Bar chart';
   // show/hide mode-specific fields
-  document.getElementById('reqField').style.display    = assignMode==='homework'?'':'none';
-  document.getElementById('durField').style.display    = assignMode==='inclass'?'':'none';
-  document.getElementById('deadField').style.display   = assignMode==='homework'?'':'none';
-  document.getElementById('maxSubField').style.display = assignMode==='inclass'?'':'none';
-  if(document.getElementById('aMaxSub')) document.getElementById('aMaxSub').value='';
+  document.getElementById('reqField').style.display  = assignMode==='homework'?'':'none';
+  document.getElementById('durField').style.display  = assignMode==='inclass'?'':'none';
+  document.getElementById('deadField').style.display = assignMode==='homework'?'':'none';
   document.getElementById('assignModal').classList.add('show');
 };
 
@@ -2764,7 +2664,6 @@ function _aCreateHandler(){
       aiNotes:         aiNotes,
       requiredAttempts:assignMode==='homework'?parseInt(document.getElementById('aReq').value||'3',10):1,
       durationMin:     assignMode==='inclass'?parseInt(document.getElementById('aDur').value||'0',10):'',
-      maxSubmissions:  assignMode==='inclass'?(parseInt(document.getElementById('aMaxSub').value||'',10)||null):null,
       deadline:        (function(){
         if (assignMode !== 'homework') return '';
         var d = document.getElementById('aDead').value;
@@ -3754,84 +3653,5 @@ startAlerts();
     </div>
   </div>
 </div>
-<!-- ═══ REQ 2: Edit Student Modal ═══ -->
-<div class="aw-modal-bg" id="editStudentModal">
-  <div class="aw-modal" style="max-width:440px">
-    <h3 style="margin:0 0 16px;font-family:var(--aw-font-display)">Edit Student Profile</h3>
-    <div class="aw-field">
-      <label class="aw-label">Full Name</label>
-      <input class="aw-input" id="esName" type="text">
-    </div>
-    <div class="aw-field">
-      <label class="aw-label">Student ID</label>
-      <input class="aw-input" id="esStudentId" type="text" disabled style="background:var(--aw-surface-2);color:var(--aw-ink-3)">
-    </div>
-    <div class="aw-field">
-      <label class="aw-label">Transfer to Class</label>
-      <select class="aw-select" id="esClass">
-        <option value="">— keep current class —</option>
-      </select>
-    </div>
-    <div class="aw-field">
-      <label class="aw-label">Birthday</label>
-      <input class="aw-input" id="esBirthdate" type="date">
-    </div>
-    <div class="aw-field">
-      <label class="aw-label">Phone</label>
-      <input class="aw-input" id="esPhone" type="tel">
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-      <button class="aw-btn aw-btn-ghost" id="esCancel">Cancel</button>
-      <button class="aw-btn aw-btn-primary" id="esSave">Save Changes</button>
-    </div>
-  </div>
-</div>
-<script>
-(function(){
-  var modal = document.getElementById('editStudentModal');
-  document.getElementById('esCancel').onclick = function(){ modal.classList.remove('show'); };
-  modal.addEventListener('click', function(e){ if(e.target===modal) modal.classList.remove('show'); });
-
-  window.openEditStudent = function(studentId){
-    // Populate class dropdown from the teacher's loaded classes
-    var clsOpts = '<option value="">— keep current class —</option>' +
-      myClasses.map(function(c){
-        return '<option value="'+AW.esc(c.classId)+'">'+AW.esc(c.className)+' ('+AW.esc(c.classId)+')</option>';
-      }).join('');
-    document.getElementById('esClass').innerHTML = clsOpts;
-    document.getElementById('esStudentId').value = studentId;
-    document.getElementById('esName').value = '';
-    document.getElementById('esBirthdate').value = '';
-    document.getElementById('esPhone').value = '';
-    document.getElementById('esClass').value = '';
-    modal.classList.add('show');
-    // Fetch current data
-    AW.api('student.getById',{studentId:studentId}).then(function(res){
-      if(!res||!res.success){ AW.toast('Không tải được dữ liệu.','err'); return; }
-      var d = res.data;
-      document.getElementById('esName').value = d.name||'';
-      document.getElementById('esBirthdate').value = (d.birthdate||'').slice(0,10);
-      document.getElementById('esPhone').value = d.phone||'';
-      if(d.class) document.getElementById('esClass').value = d.class;
-    });
-  };
-
-  document.getElementById('esSave').onclick = function(){
-    var studentId = document.getElementById('esStudentId').value.trim();
-    var name = document.getElementById('esName').value.trim();
-    if(!name){ AW.toast('Name is required.','err'); return; }
-    var payload = { studentId:studentId, name:name,
-      birthdate: document.getElementById('esBirthdate').value||undefined,
-      phone: document.getElementById('esPhone').value.trim()||undefined };
-    var cls = document.getElementById('esClass').value;
-    if(cls) payload.class = cls;
-    var btn=this; btn.disabled=true; var orig=btn.textContent; btn.innerHTML='<span class="aw-spin"></span>';
-    AW.api('student.edit',payload).then(function(res){
-      if(res&&res.success){ AW.toast('Profile updated.','ok'); modal.classList.remove('show'); loadRoster(); }
-      else AW.toast((res&&res.error)||'Update failed.','err');
-    }).finally(function(){ btn.disabled=false; btn.textContent=orig; });
-  };
-})();
-</script>
 </body>
 </html>
