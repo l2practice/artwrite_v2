@@ -14,7 +14,7 @@
   @media(max-width:960px){.aw-write-grid{grid-template-columns:1fr}}
   .aw-prompt-box{background:var(--aw-surface-2);border:1px solid var(--aw-border);border-radius:var(--aw-r);padding:18px 20px;margin-bottom:16px}
   .aw-prompt-box h4{margin:0 0 6px;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;color:var(--aw-primary);font-weight:700}
-  .aw-prompt-text{color:var(--aw-ink);line-height:1.6;font-size:.95rem;white-space:normal;word-break:break-word}
+  .aw-prompt-text{color:var(--aw-ink);line-height:1.6;font-size:.95rem;white-space:pre-wrap}
   .aw-editor-toolbar{display:flex;gap:2px;padding:8px 10px;border:1px solid var(--aw-border);border-bottom:none;border-radius:var(--aw-r) var(--aw-r) 0 0;background:var(--aw-surface-2);flex-wrap:wrap}
   .aw-tb-btn{width:32px;height:32px;border:none;background:none;border-radius:6px;cursor:pointer;color:var(--aw-ink-2);font-weight:700;display:grid;place-items:center;font-size:.9rem}
   .aw-tb-btn:hover{background:var(--aw-primary-lt);color:var(--aw-primary)}
@@ -220,7 +220,7 @@ if (hasRealTopic) {
       if (res.data.prompt && !qp.get('prompt')) {
         PROMPT = res.data.prompt;
         var pt = document.querySelector('.aw-prompt-text');
-        if (pt) pt.innerHTML = AW.esc(AW.stripHtml(PROMPT).replace(/\s*\n\s*/g,' ').replace(/[ \t]{2,}/g,' ').trim());
+        if (pt) pt.innerHTML = AW.esc(AW.stripHtml(PROMPT));
       }
       AI_NOTES = res.data.aiNotes || '';
       // Override MIN_WORDS if teacher specified a custom limit for this task
@@ -258,7 +258,7 @@ content.innerHTML =
           ? '<span class="aw-task1-badge" id="taskTypeBadge">Task 1</span>'
           : '<span class="aw-task2-badge" id="taskTypeBadge">Task 2</span>';
         return '<div class="aw-prompt-box"><h4>IELTS Writing Prompt'+ttBadge+'</h4>' +
-          '<div class="aw-prompt-text">'+AW.esc(AW.stripHtml(PROMPT).replace(/\s*\n\s*/g,' ').replace(/[ \t]{2,}/g,' ').trim())+'</div></div>';
+          '<div class="aw-prompt-text">'+AW.stripHtml(PROMPT)+'</div></div>';
       })() +
       '<div class="aw-editor-toolbar">' +
         '<button class="aw-tb-btn" data-cmd="bold"><b>B</b></button>' +
@@ -411,41 +411,81 @@ editor.addEventListener('input', function(){
 updateWordCount();
 
 // Restore draft: localStorage first (fastest), then server snapshot as fallback
+var ELAPSED_KEY = 'aw_elapsed_' + MODE + '_' + TOPIC_ID;
 if (!RETRY) {
   var saved = localStorage.getItem(DRAFT_KEY);
-  if (saved && saved.trim() && saved.replace(/<[^>]*>/g,'').trim()) {
-    editor.innerHTML = saved;
-    updateWordCount();
-    AW.toast('✓ Đã khôi phục bài đang viết dang dở','ok', 3000);
-  } else if (MODE === 'inclass' && TOPIC_ID) {
-    // Fallback: try to restore from server heartbeat snapshot
-    // (covers case where student switched device or cleared browser cache)
-    AW.api('write.getDraftSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID }).then(function(res){
-      if (res && res.success && res.data && res.data.snapshot && !editor.innerText.trim()) {
-        editor.innerText = res.data.snapshot;
-        updateWordCount();
-        AW.toast('✓ Đã khôi phục bài từ server (đổi thiết bị)','ok', 4000);
-        // Also save to localStorage so next restore is faster
-        try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
+  var hasDraft = saved && saved.trim() && saved.replace(/<[^>]*>/g,'').trim();
+
+  if ((hasDraft || (MODE === 'inclass' && TOPIC_ID)) ) {
+    // Always check attempt count first for inclass — blocks stale draft/snapshot restore
+    var _restoreCheck = (MODE === 'inclass' && TOPIC_ID)
+      ? AW.api('write.getAttemptCount', { studentId: sess.studentId, topicId: TOPIC_ID, mode: MODE })
+      : Promise.resolve({ success:true, data:{ count:0 } });
+
+    _restoreCheck.then(function(res){
+      var priorCount = (res && res.success) ? (res.data.count || 0) : 0;
+
+      if (priorCount > 0) {
+        // Already submitted — clear stale cache and start blank
+        try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
+        try { localStorage.removeItem(ELAPSED_KEY); } catch(e){}
+        AW.api('write.clearSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID });
+        return; // blank editor — no restore
       }
-    }).catch(function(){}); // silent fail — not critical
+
+      // Not yet submitted — safe to restore
+      if (hasDraft) {
+        editor.innerHTML = saved;
+        updateWordCount();
+        AW.toast('✓ Đã khôi phục bài đang viết dang dở','ok', 3000);
+      } else if (MODE === 'inclass' && TOPIC_ID) {
+        // Fallback: server snapshot (switched device / cleared cache)
+        AW.api('write.getDraftSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID }).then(function(r){
+          if (r && r.success && r.data && r.data.snapshot && !editor.innerText.trim()) {
+            editor.innerText = r.data.snapshot;
+            updateWordCount();
+            AW.toast('✓ Đã khôi phục bài từ server','ok', 4000);
+            try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
+          }
+        });
+      }
+    }).catch(function(){
+      // Network fail: fallback to localStorage without server check
+      // (backend will enforce submission limits on final submit anyway)
+      if (hasDraft) {
+        editor.innerHTML = saved;
+        updateWordCount();
+      }
+    });
   }
 }
 window.pauseWriting = function(){
+  stopTimer();
+  _saveElapsed();
   try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
-  AW.toast('Draft saved. You can leave and come back anytime.','ok',3000);
+  var et = Math.floor(elapsedSeconds/60)+'m'+(elapsedSeconds%60<10?'0':'')+elapsedSeconds%60+'s';
+  AW.toast('Draft saved'+(DURATION_MIN?' ('+et+' elapsed)':'')+'. You can leave and come back anytime.','ok',3500);
+  if (DURATION_MIN && !_timeUpFired) startTimer(); // resume counting immediately
 };
-// clear draft after successful submission
+// clear draft AND server snapshot after successful submission
 window.clearDraft = function(){
   try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
+  try { localStorage.removeItem(ELAPSED_KEY); } catch(e){}
+  if (MODE === 'inclass' && TOPIC_ID && sess && sess.studentId) {
+    AW.api('write.clearSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID });
+  }
 };
 setTimeout(function(){ var pb=document.getElementById('pauseBtn'); if(pb) pb.onclick=pauseWriting; }, 0);
 
 /*──────── retry: start FRESH with an empty editor ────────*/
 if (RETRY) {
   localStorage.removeItem(DRAFT_KEY);
+  try { localStorage.removeItem(ELAPSED_KEY); } catch(e){}
   editor.innerText = '';
   wc.textContent = '0 words';
+  if (MODE === 'inclass' && TOPIC_ID && sess && sess.studentId) {
+    AW.api('write.clearSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID });
+  }
   AW.api('write.getAttemptCount', { studentId: sess.studentId, topicId: TOPIC_ID, mode: MODE }).then(function(res){
     if (res && res.success && res.data.count >= 3 && MODE !== 'free') {
       lockEditorFull();
@@ -472,36 +512,83 @@ function lockEditorFull(){
   }
 }
 
-/*──────── timer ────────*/
-if (DURATION_MIN) {
-  var remain = DURATION_MIN*60;
-  var tEl = document.getElementById('timer');
-  var timeUp = false;
-  var tick = setInterval(function(){
-    remain--;
-    if (remain<=0){
-      clearInterval(tick);
-      if (tEl) tEl.textContent = '0:00';
-      if (!timeUp){
-        timeUp = true;
-        // time's up → auto-submit whatever is written, then lock the editor
-        AW.toast('Hết giờ! Bài của bạn đang được nộp tự động…','err',5000);
-        autoSubmitOnTimeout();
-      }
-      return;
-    }
-    var m=Math.floor(remain/60), s=remain%60;
-    if (tEl){
-      tEl.textContent = '⏱ '+m+':'+(s<10?'0':'')+s;
-      if (remain<=60)  { tEl.style.color='#B42318'; tEl.style.fontWeight='900'; }
-      else if (remain<=300) tEl.style.color = '#D93025';   // last 5 min: red
-    }
-    // Milestone toasts
-    if (remain===600) AW.toast('⏰ Còn 10 phút — hãy hoàn thiện bài nhé!','err',4000);
-    if (remain===300) AW.toast('⚠️ Còn 5 phút — chuẩn bị kết bài!','err',4000);
-    if (remain===60)  AW.toast('🚨 Còn 1 phút — bài sẽ tự động nộp!','err',5000);
-  },1000);
+/*──────── timer (persistent elapsed) ────────
+   Counts UP (elapsed seconds), displays as remaining = allowed - elapsed.
+   Saves elapsed to localStorage on pause/unload so tab refresh continues
+   from where it left off — never resets to 0.                            */
+var elapsedSeconds = 0;
+var _timerTick = null;
+var _timeUpFired = false;
+var _timerStarted = false;
+
+if (DURATION_MIN && !RETRY) {
+  // Restore elapsed from previous session
+  var _storedElapsed = localStorage.getItem(ELAPSED_KEY);
+  if (_storedElapsed) {
+    var _n = parseInt(_storedElapsed, 10);
+    if (!isNaN(_n) && _n > 0) elapsedSeconds = _n;
+  }
 }
+
+var _timerEl = DURATION_MIN ? document.getElementById('timer') : null;
+
+function _fmtTimer(sec) {
+  var r = Math.max(0, (DURATION_MIN * 60) - sec);
+  var m = Math.floor(r/60), s = r%60;
+  return '⏱ ' + m + ':' + (s<10?'0':'') + s;
+}
+function _updateTimerDisplay() {
+  if (!_timerEl || !DURATION_MIN) return;
+  var rem = (DURATION_MIN*60) - elapsedSeconds;
+  _timerEl.textContent = _fmtTimer(elapsedSeconds);
+  if (rem<=60)       { _timerEl.style.color='#B42318'; _timerEl.style.fontWeight='900'; }
+  else if (rem<=300) { _timerEl.style.color='#D93025'; _timerEl.style.fontWeight=''; }
+  else               { _timerEl.style.color=''; _timerEl.style.fontWeight=''; }
+}
+function _saveElapsed() {
+  if (!DURATION_MIN) return;
+  try { localStorage.setItem(ELAPSED_KEY, String(elapsedSeconds)); } catch(e){}
+}
+function stopTimer() {
+  if (_timerTick) { clearInterval(_timerTick); _timerTick = null; }
+}
+function startTimer() {
+  if (_timerTick || !DURATION_MIN) return;
+  _timerStarted = true;
+  _updateTimerDisplay();
+  _timerTick = setInterval(function(){
+    elapsedSeconds++;
+    _saveElapsed();
+    _updateTimerDisplay();
+    var rem = (DURATION_MIN*60) - elapsedSeconds;
+    if (rem === 600) AW.toast('⏰ Còn 10 phút — hãy hoàn thiện bài nhé!','err',4000);
+    if (rem === 300) AW.toast('⚠️ Còn 5 phút — chuẩn bị kết bài!','err',4000);
+    if (rem === 60)  AW.toast('🚨 Còn 1 phút — bài sẽ tự động nộp!','err',5000);
+    if (rem <= 0 && !_timeUpFired) {
+      _timeUpFired = true;
+      stopTimer(); _saveElapsed();
+      AW.toast('Hết giờ! Bài của bạn đang được nộp tự động…','err',5000);
+      autoSubmitOnTimeout();
+    }
+  }, 1000);
+}
+// Start on first keystroke (don't count reading time)
+if (DURATION_MIN) {
+  if (!RETRY) {
+    // If draft was restored (student already started writing), start immediately
+    if (localStorage.getItem(DRAFT_KEY)) {
+      startTimer();
+    } else {
+      editor.addEventListener('input', function _startOnce(){
+        editor.removeEventListener('input', _startOnce);
+        startTimer();
+      });
+    }
+  }
+  _updateTimerDisplay();
+}
+window.addEventListener('beforeunload', _saveElapsed);
+window.addEventListener('visibilitychange', function(){ if(document.visibilityState==='hidden') _saveElapsed(); });
 
 /* Fired once when the countdown reaches zero.
    Strategy: programmatically trigger gradeBtnHandler (same as student pressing
@@ -526,7 +613,7 @@ function autoSubmitOnTimeout(){
     AW.api('write.saveResult', {
       studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
       taskType:TASK_TYPE, startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-      duration:Math.round((Date.now()-startTime)/1000),
+      duration:(DURATION_MIN && elapsedSeconds ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
       tr:'', cc:'', lr:'', gra:'', aiGrading:'', teacherGrading:'',
       essay:'(Không có nội dung)', class:(sess.class||''), feedback:''
     }).then(function(saveRes){
@@ -645,8 +732,183 @@ function sendHeartbeat(status, raiseHand){
     snapshot: editor.innerText.slice(0,8000)
   };
   if (raiseHand != null) payload.raiseHand = raiseHand;
-  AW.api('write.heartbeat', payload);
+  if (MODE !== 'inclass') { AW.api('write.heartbeat', payload); return; }
+  AW.api('write.heartbeat', payload).then(function(res){
+    if (!res || !res.forceSubmit) return;
+    if (writePhase === 'graded') return;
+    // Persist flag so tab refresh also shows overlay
+    try { localStorage.setItem('aw_fs_' + TOPIC_ID, '1'); } catch(e){}
+    showFinishOverlay();
+  }).catch(function(){});
 }
+
+/*── Finish Overlay — teacher pressed Finish ──────────────────
+   Locks editor, shows 1 button: "Get AI Feedback & Submit".
+   If AI fails/times out → saves raw essay, informs student.   */
+var _finishOverlayShown = false;
+function showFinishOverlay(){
+  if (_finishOverlayShown || writePhase === 'graded') return;
+  _finishOverlayShown = true;
+  stopTimer();
+
+  // Lock editing
+  editor.setAttribute('contenteditable','false');
+  editor.style.pointerEvents = 'none';
+  var gb = document.getElementById('gradeBtn');
+  if (gb) { gb.disabled=true; gb.style.display='none'; }
+  var pb = document.getElementById('pauseBtn');
+  if (pb) pb.style.display='none';
+
+  var text = (window.lastPlainEssay || editor.innerText || '').trim();
+  var wc2  = AW.wordCount(text);
+  var minW = TASK_TYPE === 'task1' ? 150 : 250;
+  var hasContent = wc2 >= 10;
+
+  var ov = document.createElement('div');
+  ov.id = 'finishOverlay';
+  ov.style.cssText =
+    'position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;'+
+    'background:rgba(16,34,46,.75);padding:20px;font-family:var(--aw-font-body)';
+
+  var card = document.createElement('div');
+  card.style.cssText =
+    'background:var(--aw-surface);border-radius:18px;padding:32px 28px;max-width:460px;width:100%;'+
+    'text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.35)';
+
+  card.innerHTML =
+    '<div style="font-size:2.4rem;margin-bottom:8px">'+(hasContent?'⏱':'😔')+'</div>'+
+    '<h3 style="margin:0 0 8px;font-family:var(--aw-font-display);font-size:1.25rem">'+
+      'Giáo viên đã kết thúc giờ học'+
+    '</h3>'+
+    (hasContent
+      ? '<p style="margin:0 0 6px;font-size:.9rem;color:var(--aw-ink-2);line-height:1.55">'+
+          'Bài của bạn (<b>'+wc2+' từ</b>) sẽ được nộp ngay bây giờ.'+
+          (AW_AI_ON?' AI sẽ chấm điểm — nếu AI nghẽn, giáo viên sẽ chấm tay.':' Giáo viên sẽ chấm điểm.')+
+        '</p>'+
+        (wc2 < minW
+          ? '<p style="margin:0 0 16px;font-size:.83rem;color:#B8860B;background:#FFF8EC;border-radius:8px;padding:8px 12px">'+
+              '⚠ Bài dưới '+minW+' từ — điểm có thể chưa chính xác.'+
+            '</p>'
+          : '<div style="margin-bottom:16px"></div>'
+        )+
+        '<button id="finishSubmitBtn" class="aw-btn aw-btn-primary" style="width:100%;padding:13px;font-size:1rem;font-weight:700">'+
+          (AW_AI_ON ? '🤖 Get AI Feedback & Submit' : '📤 Nộp bài cho giáo viên')+
+        '</button>'+
+        '<p style="margin:10px 0 0;font-size:.76rem;color:var(--aw-ink-3)">Bạn chỉ có thể bấm một lần duy nhất.</p>'
+      : '<p style="margin:0 0 20px;font-size:.9rem;color:var(--aw-ink-2)">Chưa có nội dung bài viết.</p>'+
+        '<p style="font-size:.83rem;color:var(--aw-ink-3)">Giáo viên đã ghi nhận sự có mặt của bạn.</p>'
+    );
+
+  ov.appendChild(card);
+  document.body.appendChild(ov);
+
+  if (!hasContent) {
+    // Nothing to submit — clear flag and done
+    try { localStorage.removeItem('aw_fs_' + TOPIC_ID); } catch(e){}
+    return;
+  }
+
+  document.getElementById('finishSubmitBtn').onclick = function(){
+    var btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="aw-spin"></span> Đang xử lý…';
+    try { localStorage.removeItem('aw_fs_' + TOPIC_ID); } catch(e){}
+
+    if (AW_AI_ON) {
+      // Re-enable editor and gradeBtn momentarily so gradeBtnHandler runs
+      editor.setAttribute('contenteditable','true');
+      editor.style.pointerEvents = '';
+      if (gb) { gb.disabled=false; gb.style.display=''; }
+      writePhase = 'editing';
+
+      // Patch transitionToGraded to remove overlay on success
+      var _origTTG = window.transitionToGraded;
+      window.transitionToGraded = function(b, used, done){
+        ov.remove();
+        window.transitionToGraded = _origTTG;
+        if (_origTTG) _origTTG(b, used, done);
+      };
+
+      // 60s fallback: if AI doesn't respond, save raw
+      var _aiDone = false;
+      var _aiFallback = setTimeout(function(){
+        if (_aiDone) return;
+        _aiDone = true;
+        AW.toast('AI đang nghẽn — bài được lưu để giáo viên chấm tay.','err',7000);
+        _saveRawFinish(text, ov);
+      }, 60000);
+
+      // Poll writePhase to detect when AI grading completes
+      var _watcher = setInterval(function(){
+        if (writePhase === 'graded') {
+          if (!_aiDone) { _aiDone=true; clearTimeout(_aiFallback); }
+          clearInterval(_watcher);
+        }
+      }, 500);
+
+      if (gb) gb.click();
+
+    } else {
+      _saveRawFinish(text, ov);
+    }
+  };
+}
+
+function _saveRawFinish(text, overlayEl){
+  if (writePhase === 'graded') { if(overlayEl) overlayEl.remove(); return; }
+  writePhase = 'grading';
+  AW.api('write.saveResult', {
+    studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
+    startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
+    duration:(DURATION_MIN && elapsedSeconds ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
+    tr:'', cc:'', lr:'', gra:'', aiGrading:'', teacherGrading:'',
+    essay:text, class:(sess.class||''), feedback:'', submittedBy:'teacher_finish'
+  }).then(function(res){
+    writePhase = 'graded';
+    sendHeartbeat('Submitted');
+    if (window.clearDraft) window.clearDraft();
+    if (overlayEl) overlayEl.innerHTML =
+      '<div style="background:var(--aw-surface);border-radius:18px;padding:32px 28px;max-width:420px;width:100%;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.35)">'+
+        '<div style="font-size:2.4rem;margin-bottom:10px">✅</div>'+
+        '<h3 style="margin:0 0 8px;font-family:var(--aw-font-display)">Bài đã được lưu lại</h3>'+
+        '<p style="font-size:.88rem;color:var(--aw-ink-2);line-height:1.55">'+
+          'AI không phản hồi kịp — bài đã được ghi nhận.<br>'+
+          '<b>Giáo viên sẽ chấm điểm và trả kết quả qua My Progress.</b>'+
+        '</p>'+
+      '</div>';
+    lockEditor('Bài đã được nộp.');
+  }).catch(function(){
+    writePhase = 'editing';
+    var btn = document.getElementById('finishSubmitBtn');
+    if (btn) { btn.disabled=false; btn.textContent='↺ Thử lại'; }
+    AW.toast('Lỗi kết nối — thử lại.','err');
+  });
+}
+
+// On page load: check if forceSubmit flag was set (handles tab close & reopen)
+// Also check server heartbeat in case localStorage was cleared
+(function(){
+  if (MODE !== 'inclass' || RETRY || writePhase === 'graded') return;
+  // Check localStorage flag first (instant)
+  try {
+    if (localStorage.getItem('aw_fs_' + TOPIC_ID) === '1') {
+      setTimeout(showFinishOverlay, 800);
+      return;
+    }
+  } catch(e){}
+  // No local flag — do a single heartbeat check on load to get server flag
+  // (covers case where student cleared localStorage but flag is still on server)
+  AW.api('write.heartbeat', {
+    studentId: sess.studentId, name: sess.name, class: sess.class,
+    topicId: TOPIC_ID, topic: TOPIC, mode: MODE,
+    status: 'Writing', wordCount: 0, snapshot: ''
+  }).then(function(res){
+    if (res && res.forceSubmit && writePhase !== 'graded') {
+      try { localStorage.setItem('aw_fs_' + TOPIC_ID, '1'); } catch(e){}
+      setTimeout(showFinishOverlay, 400);
+    }
+  }).catch(function(){});
+})();
 var handRaised=false;
 window.toggleRaiseHand=function(){
   handRaised=!handRaised;
@@ -694,7 +956,7 @@ function submitWithoutAI(btn, text){
   AW.api('write.saveResult', {
     studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
     startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-    duration:Math.round((Date.now()-startTime)/1000),
+    duration:(DURATION_MIN && elapsedSeconds ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
     tr:'', cc:'', lr:'', gra:'', aiGrading:'', teacherGrading:'',
     essay:text, class:(sess.class||''), feedback:''
   }).then(function(res){
@@ -916,7 +1178,7 @@ function gradeBtnHandler(){
       return AW.api('write.saveResult', {
         studentId:sess.studentId, name:sess.name, mode:MODE, topic:TOPIC, topicId:TOPIC_ID,
         startTime:startTime.toISOString(), finishTime:new Date().toISOString(),
-        duration:Math.round((Date.now()-startTime)/1000),
+        duration:(DURATION_MIN && elapsedSeconds ? elapsedSeconds : Math.round((Date.now()-startTime)/1000)),
         tr:result.scores.TR, cc:result.scores.CC, lr:result.scores.LR, gra:result.scores.GRA,
         aiGrading:result.overall, teacherGrading:'', essay:lastPlainEssay, class:(sess.class||''),
         feedback: JSON.stringify(result)

@@ -768,7 +768,7 @@ function loadRoster(){
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--aw-border-2);font-size:.88rem">'+
         '<span><b>'+AW.esc(s.studentId)+'</b> · '+AW.esc(s.name||'')+'</span>'+
         '<span style="display:flex;gap:8px;align-items:center"><span style="color:var(--aw-ink-3)">'+AW.esc(s.email||'')+'</span>'+
-        '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem" onclick="openEditStudent(\''+AW.esc(s.studentId)+'\',\''+AW.esc(s.name||'')+'\',\''+AW.esc(s.class||curClass())+'\',\''+AW.esc(s.birthdate||'')+'\',\''+AW.esc(s.phone||'')+'\')">✏ Edit</button>'+
+        '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem" onclick="openEditStudent(\''+AW.esc(s.studentId)+'\',\''+AW.esc(s.name||'')+'\',\''+AW.esc(s.class||curClass())+'\',\''+AW.esc((s.birthdate||'').slice(0,10))+'\',\''+AW.esc(s.phone||'')+'\')">✏ Edit</button>'+
         '<button class="aw-btn aw-btn-ghost" style="padding:3px 9px;font-size:.72rem;color:var(--aw-danger)" onclick="archiveStudent(\''+AW.esc(s.studentId)+'\',\''+AW.esc(s.name||'')+'\')">Archive</button></span></div>';
     }).join('');
   });
@@ -956,143 +956,130 @@ function showLive(){
         '<div class="aw-live-side"><h4>🙋 Live Questions <span id="liveQCount" style="font-weight:400;color:var(--aw-danger)"></span></h4>' +
           '<div id="liveQuestions" style="margin-bottom:16px"><p style="font-size:.8rem;color:var(--aw-ink-3)">No questions yet.</p></div>' +
           '<h4>Session Stats</h4><div id="liveStats"></div>' +
-          '<p style="font-size:.78rem;color:var(--aw-ink-3);margin-top:14px">Click a student to open their live essay and add suggestions.</p>' +
-          // ── Session Clock (REQ 5) ──
-          '<div id="awSessionClock" style="margin-top:20px;border-top:1px solid var(--aw-border-2);padding-top:16px;text-align:center">' +
-            '<div id="awClockBody" style="font-size:.82rem;color:var(--aw-ink-2)">' +
-              '<p style="margin:0 0 12px;font-size:.78rem;color:var(--aw-ink-3)">Set session time:</p>' +
-              '<div style="display:flex;flex-direction:column;gap:8px;text-align:left">' +
-                '<div><label style="font-size:.72rem;font-weight:600;color:var(--aw-ink-3);display:block;margin-bottom:3px">Start time</label>' +
-                  '<div style="display:flex;gap:6px;align-items:center">' +
-                    '<input type="time" id="awStartTimeInput" class="aw-input" style="flex:1;padding:5px 8px;font-size:.82rem">' +
-                    '<button class="aw-btn aw-btn-ghost" id="awMarkNowBtn" style="padding:5px 8px;font-size:.72rem;white-space:nowrap">▶ Now</button>' +
-                  '</div>' +
-                '</div>' +
-                '<div><label style="font-size:.72rem;font-weight:600;color:var(--aw-ink-3);display:block;margin-bottom:3px">Duration (mins)</label>' +
-                  '<input type="number" id="awDurationInput" class="aw-input" style="padding:5px 8px;font-size:.82rem;width:100%" min="1" max="180" placeholder="45">' +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div id="awClockDisplay" style="display:none;padding:4px 0">' +
-              '<div style="font-size:.82rem;color:var(--aw-ink-3);margin-bottom:2px">Start: <b id="awClockStart" style="color:var(--aw-ink)"></b></div>' +
-              '<div style="font-size:.82rem;color:var(--aw-ink-3);margin-bottom:14px">Duration: <b id="awClockDur" style="color:var(--aw-ink)"></b></div>' +
-              '<div style="font-size:.78rem;font-weight:600;color:var(--aw-ink-3);margin-bottom:4px">Remaining</div>' +
-              '<div id="awClockRemain" style="font-size:2rem;font-weight:800;color:var(--aw-primary);font-family:var(--aw-font-display);letter-spacing:.02em;line-height:1">--:--</div>' +
-              '<button class="aw-btn aw-btn-ghost" id="awClockReset" style="margin-top:12px;padding:4px 12px;font-size:.72rem">↺ Reset</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>'
+          '<p style="font-size:.78rem;color:var(--aw-ink-3);margin-top:14px">Click a student to open their live essay and add suggestions.</p>'+
+          // ── Session Clock ──
+          '<div id="awSessionClock" style="margin-top:18px;border-top:1px solid var(--aw-border-2);padding-top:14px">'+
+            '<div id="awClockBody">'+
+              '<p style="margin:0 0 10px;font-size:.76rem;color:var(--aw-ink-3);font-weight:600">⏱ Session Timer</p>'+
+              '<div style="display:flex;flex-direction:column;gap:8px">'+
+                '<div><label style="font-size:.72rem;font-weight:600;color:var(--aw-ink-3);display:block;margin-bottom:2px">Start time</label>'+
+                  '<div style="display:flex;gap:6px">'+
+                    '<input type="time" id="awStartTimeInput" class="aw-input" style="flex:1;padding:5px 8px;font-size:.82rem">'+
+                    '<button class="aw-btn aw-btn-ghost" id="awMarkNowBtn" style="padding:5px 8px;font-size:.72rem;white-space:nowrap">▶ Now</button>'+
+                  '</div>'+
+                '</div>'+
+                '<div><label style="font-size:.72rem;font-weight:600;color:var(--aw-ink-3);display:block;margin-bottom:2px">Duration (mins)</label>'+
+                  '<input type="number" id="awDurationInput" class="aw-input" style="padding:5px 8px;font-size:.82rem;width:100%;box-sizing:border-box" min="1" max="180" placeholder="45">'+
+                '</div>'+
+              '</div>'+
+            '</div>'+
+            '<div id="awClockDisplay" style="display:none;text-align:center;padding:4px 0">'+
+              '<div style="font-size:.82rem;color:var(--aw-ink-3)">Start: <b id="awClockStart" style="color:var(--aw-ink)"></b></div>'+
+              '<div style="font-size:.82rem;color:var(--aw-ink-3);margin-bottom:12px">Duration: <b id="awClockDur" style="color:var(--aw-ink)"></b></div>'+
+              '<div style="font-size:.74rem;font-weight:600;color:var(--aw-ink-3);margin-bottom:4px">Remaining</div>'+
+              '<div id="awClockRemain" style="font-size:2.2rem;font-weight:800;color:var(--aw-primary);font-family:var(--aw-font-display);letter-spacing:.02em;line-height:1">--:--</div>'+
+              '<div style="display:flex;gap:8px;justify-content:center;margin-top:14px">'+
+                '<button class="aw-btn aw-btn-ghost" id="awClockReset" style="padding:5px 12px;font-size:.75rem">↺ Reset</button>'+
+                '<button class="aw-btn aw-btn-primary" id="awFinishBtn" style="padding:5px 14px;font-size:.75rem;background:#D93025;border-color:#D93025">⏹ Finish</button>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
       '</div>';
 
     document.getElementById('liveTaskSel').onchange=function(){ liveTaskFilter=this.value; renderLive(); };
 
-    // ── Session Clock (REQ 5) ──────────────────────────────────
+    // ── Session Clock & Finish ─────────────────────────────────
     (function(){
-      var SESSION_KEY = 'aw_sess_clock_' + curClass();
-      var _cd = null;
-
-      function loadState() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)||'{}'); } catch(e){ return {}; } }
-      function saveState(s) { try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch(e){} }
-
-      function fmtTime(date) {
-        if (!date || isNaN(date)) return '--:--';
-        return date.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+      var SESSION_KEY='aw_sess_'+curClass(), _cd=null;
+      function ls(k){ try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;} }
+      function ss(k,v){ try{localStorage.setItem(k,JSON.stringify(v));}catch(e){} }
+      function fmtHM(d){ return d.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'}); }
+      function fmtRemain(ms){
+        if(ms<=0) return '00:00';
+        var t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+        return (h?h+':':'')+(m<10?'0':'')+m+':'+(s<10?'0':'')+s;
       }
-      function fmtRemain(ms) {
-        if (ms <= 0) return '00:00';
-        var t = Math.floor(ms/1000), h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
-        if (h > 0) return h + ':' + (m<10?'0':'')+m + ':' + (s<10?'0':'')+s;
-        return (m<10?'0':'')+m + ':' + (s<10?'0':'')+s;
-      }
-
-      function stopCd() { if (_cd) { clearInterval(_cd); _cd = null; } }
-
-      function startClock(startMs, durationMin) {
+      function stopCd(){ if(_cd){clearInterval(_cd);_cd=null;} }
+      function startClock(startMs, durMin){
         stopCd();
-        var bodyEl    = document.getElementById('awClockBody');
-        var displayEl = document.getElementById('awClockDisplay');
-        var startEl   = document.getElementById('awClockStart');
-        var durEl     = document.getElementById('awClockDur');
-        var remainEl  = document.getElementById('awClockRemain');
-        if (!bodyEl) return;
-
-        bodyEl.style.display    = 'none';
-        displayEl.style.display = '';
-        startEl.textContent = fmtTime(new Date(startMs));
-        durEl.textContent   = durationMin + ' mins';
-
-        var endMs = startMs + durationMin * 60000;
-        function tick() {
-          if (!remainEl) return stopCd();
-          var rem = endMs - Date.now();
-          remainEl.textContent = rem > 0 ? fmtRemain(rem) : '00:00';
-          if (rem <= 0) {
-            remainEl.style.color = '#D93025';
-            stopCd();
-          } else if (rem <= 5*60000) {
-            remainEl.style.color = '#D93025';
-          } else if (rem <= 10*60000) {
-            remainEl.style.color = '#E0A32E';
-          } else {
-            remainEl.style.color = 'var(--aw-primary)';
-          }
+        var bEl=document.getElementById('awClockBody'), dEl=document.getElementById('awClockDisplay');
+        var rEl=document.getElementById('awClockRemain');
+        if(!bEl) return;
+        bEl.style.display='none'; dEl.style.display='';
+        document.getElementById('awClockStart').textContent=fmtHM(new Date(startMs));
+        document.getElementById('awClockDur').textContent=durMin+' mins';
+        var endMs=startMs+durMin*60000;
+        function tick(){
+          if(!rEl) return stopCd();
+          var rem=endMs-Date.now();
+          rEl.textContent=rem>0?fmtRemain(rem):'00:00';
+          rEl.style.color=rem<=0?'#D93025':rem<=5*60000?'#D93025':rem<=10*60000?'#E0A32E':'var(--aw-primary)';
+          if(rem<=0) stopCd();
         }
-        tick();
-        _cd = setInterval(tick, 1000);
+        tick(); _cd=setInterval(tick,1000);
       }
-
-      // Restore saved session
-      var state = loadState();
-      if (state.startMs && state.durationMin) {
-        var inp = document.getElementById('awStartTimeInput');
-        var dur = document.getElementById('awDurationInput');
-        if (inp) { var d=new Date(state.startMs); inp.value=(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes(); }
-        if (dur) dur.value = state.durationMin;
-        startClock(state.startMs, state.durationMin);
+      function tryStart(){
+        var tv=(document.getElementById('awStartTimeInput').value||'').trim();
+        var dv=parseInt(document.getElementById('awDurationInput').value||'',10);
+        if(!tv||!dv||dv<1) return;
+        var now=new Date(), p=tv.split(':');
+        var startMs=new Date(now.getFullYear(),now.getMonth(),now.getDate(),+p[0],+p[1],0).getTime();
+        ss(SESSION_KEY,{startMs:startMs,durationMin:dv});
+        startClock(startMs,dv);
       }
-
-      // ▶ Now button — set start to current time
-      document.getElementById('awMarkNowBtn').onclick = function() {
-        var now = new Date();
-        var h = now.getHours(), m = now.getMinutes();
-        var inp = document.getElementById('awStartTimeInput');
-        inp.value = (h<10?'0':'')+h+':'+(m<10?'0':'')+m;
+      // Restore
+      var st=ls(SESSION_KEY);
+      if(st&&st.startMs&&st.durationMin){
+        var d=new Date(st.startMs);
+        var i=document.getElementById('awStartTimeInput'), u=document.getElementById('awDurationInput');
+        if(i) i.value=(d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes();
+        if(u) u.value=st.durationMin;
+        startClock(st.startMs,st.durationMin);
+      }
+      document.getElementById('awMarkNowBtn').onclick=function(){
+        var now=new Date(), inp=document.getElementById('awStartTimeInput');
+        inp.value=(now.getHours()<10?'0':'')+now.getHours()+':'+(now.getMinutes()<10?'0':'')+now.getMinutes();
         inp.dispatchEvent(new Event('change'));
       };
-
-      function tryStart() {
-        var timeVal = (document.getElementById('awStartTimeInput').value||'').trim();
-        var durVal  = parseInt(document.getElementById('awDurationInput').value||'', 10);
-        if (!timeVal || !durVal || durVal < 1) return;
-        var now = new Date();
-        var parts = timeVal.split(':');
-        var startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
-                                 parseInt(parts[0],10), parseInt(parts[1],10), 0);
-        var startMs = startDate.getTime();
-        var s = { startMs: startMs, durationMin: durVal };
-        saveState(s);
-        startClock(startMs, durVal);
-      }
-
-      document.getElementById('awStartTimeInput').addEventListener('change', tryStart);
-      document.getElementById('awDurationInput').addEventListener('change', tryStart);
-
-      // Reset
-      document.getElementById('awClockReset').onclick = function() {
-        stopCd();
-        localStorage.removeItem(SESSION_KEY);
-        var bodyEl    = document.getElementById('awClockBody');
-        var displayEl = document.getElementById('awClockDisplay');
-        if (bodyEl)    bodyEl.style.display    = '';
-        if (displayEl) displayEl.style.display = 'none';
-        var inp = document.getElementById('awStartTimeInput');
-        var dur = document.getElementById('awDurationInput');
-        if (inp) inp.value = ''; if (dur) dur.value = '';
+      document.getElementById('awStartTimeInput').addEventListener('change',tryStart);
+      document.getElementById('awDurationInput').addEventListener('change',tryStart);
+      document.getElementById('awClockReset').onclick=function(){
+        stopCd(); localStorage.removeItem(SESSION_KEY);
+        var b=document.getElementById('awClockBody'), d=document.getElementById('awClockDisplay');
+        if(b) b.style.display=''; if(d) d.style.display='none';
+        var i=document.getElementById('awStartTimeInput'), u=document.getElementById('awDurationInput');
+        if(i) i.value=''; if(u) u.value='';
       };
-
-      // Stop clock when leaving Live tab
-      var _origStop = window.stopLivePoll;
-      window.stopLivePoll = function() { if (_origStop) _origStop(); stopCd(); };
+      // ── Finish button ─────────────────────────────────────────
+      document.getElementById('awFinishBtn').onclick=function(){
+        var topicFilter=liveTaskFilter&&liveTaskFilter!=='all'?liveTaskFilter:null;
+        var activeCount=liveData.filter(function(s){
+          return s.status!=='Submitted'&&(!topicFilter||String(s.topicId)===String(topicFilter));
+        }).length;
+        if(!confirm(
+          '⏹ Kết thúc giờ học?\n\n'+
+          activeCount+' sinh viên đang viết sẽ nhận thông báo nộp bài trong ~10 giây.\n\n'+
+          '• Một overlay sẽ hiện ra với nút "Get AI Feedback & Submit".\n'+
+          '• Sinh viên nào đóng tab / mất mạng sẽ không nhận được lệnh.\n'+
+          '• Bài đã nộp trước đó sẽ không bị ảnh hưởng.'
+        )) return;
+        var btn=this; btn.disabled=true; btn.innerHTML='⏳ Finishing…';
+        var payload={class:curClass()};
+        if(topicFilter) payload.topicId=topicFilter;
+        AW.api('teacher.finishSession',payload).then(function(res){
+          btn.disabled=false; btn.innerHTML='⏹ Finish';
+          if(res&&res.success){
+            var n=res.data&&res.data.flagged;
+            AW.toast('✓ Đã gửi lệnh nộp bài tới '+(n||0)+' sinh viên. Chờ ~10 giây.','ok',6000);
+            stopCd();
+            var rEl=document.getElementById('awClockRemain');
+            if(rEl){rEl.textContent='00:00';rEl.style.color='#D93025';}
+          } else AW.toast((res&&res.error)||'Lỗi.','err');
+        });
+      };
+      var _origStop=window.stopLivePoll;
+      window.stopLivePoll=function(){if(_origStop)_origStop();stopCd();};
     })();
 
     document.getElementById('clearLiveBtn').onclick = function(){
@@ -1389,6 +1376,25 @@ function openAnnotation(s){
   var snapshot = s.snapshot || '';
   mText.textContent = snapshot;
   mText.setAttribute('contenteditable','true');
+
+  // ── Live word count badge ──────────────────────────────────────
+  var _wcBadge = document.getElementById('annWordCountBadge');
+  if (!_wcBadge) {
+    _wcBadge = document.createElement('span');
+    _wcBadge.id = 'annWordCountBadge';
+    _wcBadge.style.cssText = 'font-size:.78rem;font-weight:600;color:var(--aw-ink-3);background:var(--aw-surface-2);border:1px solid var(--aw-border-2);border-radius:20px;padding:2px 10px;margin-left:8px;white-space:nowrap';
+    var mStudentEl = document.getElementById('mStudent');
+    if (mStudentEl && mStudentEl.parentNode) mStudentEl.parentNode.appendChild(_wcBadge);
+  }
+  function _updateAnnWc(){
+    var wc = AW.wordCount(mText.innerText||mText.textContent||'');
+    var minW = (s.taskType||'task2')==='task1' ? 150 : 250;
+    _wcBadge.textContent = wc + ' words';
+    _wcBadge.style.color = wc >= minW ? '#1A9E5C' : wc >= minW*0.8 ? '#B8860B' : 'var(--aw-danger)';
+    _wcBadge.style.borderColor = _wcBadge.style.color;
+  }
+  _updateAnnWc();
+  mText.addEventListener('input', _updateAnnWc);
 
   // ── Realtime sync state ──────────────────────────────────────────
   _annotLastSnapshot = snapshot;
@@ -3786,24 +3792,21 @@ startAlerts();
 </div>
 <!-- ═══ Edit Student Modal ═══ -->
 <div class="aw-modal-bg" id="editStudentModal">
-  <div class="aw-modal" style="max-width:440px;width:100%">
-    <h3 style="margin:0 0 18px;font-family:var(--aw-font-display);font-size:1.15rem">✏ Edit Student Profile</h3>
+  <div class="aw-modal-card" style="max-width:440px;width:100%;max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 18px;font-family:var(--aw-font-display);font-size:1.1rem">✏ Edit Student Profile</h3>
     <div class="aw-field" style="margin-bottom:12px">
       <label class="aw-label">Full Name</label>
       <input class="aw-input" id="esName" type="text" placeholder="Nguyễn Văn A">
     </div>
     <div class="aw-field" style="margin-bottom:12px">
       <label class="aw-label">Student ID</label>
-      <input class="aw-input" id="esStudentId" type="text" disabled
-        style="background:var(--aw-surface-2);color:var(--aw-ink-3);cursor:not-allowed">
+      <input class="aw-input" id="esStudentId" disabled style="background:var(--aw-surface-2);color:var(--aw-ink-3);cursor:not-allowed">
       <p style="margin:3px 0 0;font-size:.73rem;color:var(--aw-ink-3)">Student ID không thể thay đổi.</p>
     </div>
     <div class="aw-field" style="margin-bottom:12px">
       <label class="aw-label">Transfer to Class</label>
-      <select class="aw-select" id="esClass" style="width:100%">
-        <option value="">— keep current class —</option>
-      </select>
-      <p style="margin:3px 0 0;font-size:.73rem;color:var(--aw-ink-3)">Chọn lớp khác để chuyển sinh viên sang lớp đó.</p>
+      <select class="aw-select" id="esClass" style="width:100%"><option value="">— keep current class —</option></select>
+      <p style="margin:3px 0 0;font-size:.73rem;color:var(--aw-ink-3)">Chọn lớp khác để chuyển sinh viên.</p>
     </div>
     <div style="display:flex;gap:12px;margin-bottom:12px">
       <div class="aw-field" style="flex:1;margin:0">
@@ -3815,64 +3818,45 @@ startAlerts();
         <input class="aw-input" id="esPhone" type="tel" placeholder="09xx xxx xxx">
       </div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--aw-border-2)">
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--aw-border-2)">
       <button class="aw-btn aw-btn-ghost" id="esCancel">Cancel</button>
       <button class="aw-btn aw-btn-primary" id="esSave" style="padding:10px 22px">💾 Save Changes</button>
     </div>
   </div>
 </div>
-
 <script>
 (function(){
-  var modal = document.getElementById('editStudentModal');
-
-  // Open with pre-filled data passed directly from the roster row
-  window.openEditStudent = function(studentId, name, cls, birthdate, phone) {
-    document.getElementById('esStudentId').value = studentId;
-    document.getElementById('esName').value = name || '';
-    document.getElementById('esBirthdate').value = (birthdate || '').slice(0, 10);
-    document.getElementById('esPhone').value = phone || '';
-
-    // Populate class dropdown
-    var sel = document.getElementById('esClass');
-    sel.innerHTML = '<option value="">— keep current class —</option>' +
-      myClasses.map(function(c) {
-        return '<option value="' + AW.esc(c.classId) + '"' + (c.classId === cls ? ' selected' : '') + '>' +
-          AW.esc(c.className) + ' (' + AW.esc(c.classId) + ')</option>';
+  var modal=document.getElementById('editStudentModal');
+  document.getElementById('esCancel').onclick=function(){ modal.classList.remove('show'); };
+  modal.addEventListener('click',function(e){ if(e.target===modal) modal.classList.remove('show'); });
+  window.openEditStudent=function(studentId,name,cls,birthdate,phone){
+    document.getElementById('esStudentId').value=studentId;
+    document.getElementById('esName').value=name||'';
+    document.getElementById('esBirthdate').value=(birthdate||'').slice(0,10);
+    document.getElementById('esPhone').value=phone||'';
+    document.getElementById('esClass').innerHTML='<option value="">— keep current class —</option>'+
+      myClasses.map(function(c){
+        return '<option value="'+AW.esc(c.classId)+'"'+(c.classId===cls?' selected':'')+'>'+
+          AW.esc(c.className)+' ('+AW.esc(c.classId)+')</option>';
       }).join('');
-
     modal.classList.add('show');
-    document.getElementById('esName').focus();
+    setTimeout(function(){ document.getElementById('esName').focus(); },80);
   };
-
-  document.getElementById('esCancel').onclick = function() { modal.classList.remove('show'); };
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.classList.remove('show'); });
-
-  document.getElementById('esSave').onclick = function() {
-    var studentId = document.getElementById('esStudentId').value.trim();
-    var name      = document.getElementById('esName').value.trim();
-    if (!name) { AW.toast('Name is required.', 'err'); return; }
-
-    var payload = { studentId: studentId, name: name };
-    var cls = document.getElementById('esClass').value;
-    var bd  = document.getElementById('esBirthdate').value;
-    var ph  = document.getElementById('esPhone').value.trim();
-    if (cls) payload.class     = cls;
-    if (bd)  payload.birthdate = bd;
-    if (ph)  payload.phone     = ph;
-
-    var btn = this; btn.disabled = true;
-    var orig = btn.textContent; btn.innerHTML = '<span class="aw-spin"></span>';
-
-    AW.api('student.edit', payload).then(function(res) {
-      if (res && res.success) {
-        AW.toast('Profile updated ✓', 'ok');
-        modal.classList.remove('show');
-        loadRoster();
-      } else {
-        AW.toast((res && res.error) || 'Update failed.', 'err');
-      }
-    }).finally(function() { btn.disabled = false; btn.textContent = orig; });
+  document.getElementById('esSave').onclick=function(){
+    var sid=document.getElementById('esStudentId').value.trim();
+    var name=document.getElementById('esName').value.trim();
+    if(!name){ AW.toast('Name is required.','err'); return; }
+    var payload={studentId:sid,name:name};
+    var cls=document.getElementById('esClass').value;
+    var bd=document.getElementById('esBirthdate').value;
+    var ph=document.getElementById('esPhone').value.trim();
+    if(cls) payload.class=cls; if(bd) payload.birthdate=bd; if(ph) payload.phone=ph;
+    var btn=this; btn.disabled=true; var orig=btn.textContent;
+    btn.innerHTML='<span class="aw-spin"></span>';
+    AW.api('student.edit',payload).then(function(res){
+      if(res&&res.success){ AW.toast('Profile updated ✓','ok'); modal.classList.remove('show'); loadRoster(); }
+      else AW.toast((res&&res.error)||'Update failed.','err');
+    }).finally(function(){ btn.disabled=false; btn.textContent=orig; });
   };
 })();
 </script>
