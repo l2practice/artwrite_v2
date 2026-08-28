@@ -102,7 +102,7 @@
 
     // Inject warnings into Vietnamese feedback
     if (msgs.length) {
-      var banner = '\n\n━━━ RÀNG BUỘC CHẤM ĐIỂM ━━━\n' + msgs.join('\n\n');
+      var banner = '\n\n━ RÀNG BUỘC CHẤM ĐIỂM ━\n' + msgs.join('\n\n');
       result.overall_feedback_vi = banner + (result.overall_feedback_vi ? '\n\n' + result.overall_feedback_vi : '');
       result._structuralPenalties = msgs.length;
     }
