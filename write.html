@@ -214,6 +214,8 @@ var hasRealTopic = qp.get('topicId') && MODE !== 'free';
 // MIN_WORDS: default by task type, overridden by assignment's minWords field
 // GV có thể set minWords thấp hơn (VD: 80 nếu chỉ viết 1 đoạn thân bài)
 var MIN_WORDS = TASK_TYPE === 'task1' ? 150 : 250;
+// WRITING_TYPE: 'full_essay' | 'paragraph' | 'sentences' — controls grading constraints
+var WRITING_TYPE = 'full_essay';
 
 // If chart image was passed via URL (Task 1 assigned), render immediately
 if (TASK_TYPE === 'task1' && CHART_IMAGE_ID) {
@@ -235,6 +237,8 @@ if (hasRealTopic) {
         // Update the word counter label to reflect custom limit
         updateWordCount();
       }
+      // Fetch writingType for grading constraints
+      if (res.data.writingType) WRITING_TYPE = res.data.writingType;
     }
   });
 }
@@ -422,59 +426,31 @@ updateWordCount();
 // Restore draft: localStorage first (fastest), then server snapshot as fallback
 if (!RETRY) {
   var saved = localStorage.getItem(DRAFT_KEY);
-  var hasDraft = !!(saved && saved.trim() && saved.replace(/<[^>]*>/g,'').trim());
-
-  if (MODE === 'inclass' && TOPIC_ID) {
-    // For inclass: ALWAYS check submission count first.
-    // If already submitted, wipe cache and start blank — no restore.
-    AW.api('write.getAttemptCount', { studentId: sess.studentId, topicId: TOPIC_ID, mode: MODE })
-      .then(function(res){
-        var count = (res && res.success) ? (res.data.count || 0) : 0;
-        if (count > 0) {
-          // Already submitted — clear stale cache and stay blank
-          try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
-          AW.api('write.clearSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID });
-          return;
-        }
-        // Not yet submitted — safe to restore
-        if (hasDraft) {
-          editor.innerHTML = saved;
-          updateWordCount();
-          AW.toast('✓ Đã khôi phục bài đang viết dang dở','ok', 3000);
-        } else {
-          // Fallback: server snapshot (switched device / cleared cache)
-          AW.api('write.getDraftSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID }).then(function(r){
-            if (r && r.success && r.data && r.data.snapshot && !editor.innerText.trim()) {
-              editor.innerText = r.data.snapshot;
-              updateWordCount();
-              AW.toast('✓ Đã khôi phục bài từ server','ok', 4000);
-              try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
-            }
-          }).catch(function(){});
-        }
-      }).catch(function(){
-        // Network fail → fallback to localStorage, backend enforces limit on submit
-        if (hasDraft) { editor.innerHTML = saved; updateWordCount(); }
-      });
-  } else {
-    // homework / free: restore from localStorage directly (no attempt-count guard needed)
-    if (hasDraft) {
-      editor.innerHTML = saved;
-      updateWordCount();
-      AW.toast('✓ Đã khôi phục bài đang viết dang dở','ok', 3000);
-    }
+  if (saved && saved.trim() && saved.replace(/<[^>]*>/g,'').trim()) {
+    editor.innerHTML = saved;
+    updateWordCount();
+    AW.toast('✓ Đã khôi phục bài đang viết dang dở','ok', 3000);
+  } else if (MODE === 'inclass' && TOPIC_ID) {
+    // Fallback: try to restore from server heartbeat snapshot
+    // (covers case where student switched device or cleared browser cache)
+    AW.api('write.getDraftSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID }).then(function(res){
+      if (res && res.success && res.data && res.data.snapshot && !editor.innerText.trim()) {
+        editor.innerText = res.data.snapshot;
+        updateWordCount();
+        AW.toast('✓ Đã khôi phục bài từ server (đổi thiết bị)','ok', 4000);
+        // Also save to localStorage so next restore is faster
+        try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
+      }
+    }).catch(function(){}); // silent fail — not critical
   }
 }
 window.pauseWriting = function(){
   try { localStorage.setItem(DRAFT_KEY, editor.innerHTML); } catch(e){}
   AW.toast('Draft saved. You can leave and come back anytime.','ok',3000);
 };
-// Clear draft AND server snapshot after successful submission
+// clear draft after successful submission
 window.clearDraft = function(){
   try { localStorage.removeItem(DRAFT_KEY); } catch(e){}
-  if (MODE === 'inclass' && TOPIC_ID && sess && sess.studentId) {
-    AW.api('write.clearSnapshot', { studentId: sess.studentId, topicId: TOPIC_ID });
-  }
 };
 setTimeout(function(){ var pb=document.getElementById('pauseBtn'); if(pb) pb.onclick=pauseWriting; }, 0);
 
@@ -877,11 +853,11 @@ function gradeBtnHandler(){
       el.parentNode.insertBefore(document.createTextNode('\n'), el);
     } else {
       el.insertAdjacentText('afterbegin', '');
-      el.insertAdjacentText('afterend', '\n\n'); // double newline = paragraph break
+      el.insertAdjacentText('afterend', '\n');
     }
   });
   var text = (clone.innerText || clone.textContent || '').trim();
-  text = text.replace(/\n{3,}/g, '\n\n').trim(); // normalise: max 2 newlines between paras
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
   if (!text) text = rawHTML.replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
 
   if (AW.wordCount(text) < 20) { AW.toast('Write at least 20 words before submitting.','err'); return; }
@@ -931,7 +907,8 @@ function gradeBtnHandler(){
   var GRADE_TIMEOUT_MS = 90000;
   var gradeTimeoutId;
   var gradeWithTimeout = Promise.race([
-    AW.grade({ writing:lastPlainEssay, question:PROMPT, attempt:attempt, aiNotes:AI_NOTES, vocabSummary:vocabSummary }, key),
+    AW.grade({ writing:lastPlainEssay, question:PROMPT, attempt:attempt, aiNotes:AI_NOTES, vocabSummary:vocabSummary,
+               minWords:MIN_WORDS, writingType:WRITING_TYPE, taskType:TASK_TYPE }, key),
     new Promise(function(_, reject){
       gradeTimeoutId = setTimeout(function(){
         reject(new Error('timeout: AI không phản hồi sau 90 giây. Vui lòng thử lại.'));
